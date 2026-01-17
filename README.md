@@ -1,28 +1,18 @@
-crash-less & _h_-less CLASS
+_h_-less & crash-less CLASS
 =============================================
-(Scroll down for original CLASS v3.2.0 README.md contents)
-
 Author: Kevin Croker
 
-This verison forked from v3.2.0.
-The CLASS team did a bunch of reworks, like improving the Python side of the build chain and
-removing OpenMP in subsequent versions, I've not ported the features below to that stuff yet.
+[This verison is forked from <a href="https://github.com/lesgourg/class_public/tree/v3.2.0">CLASS v3.2.0</a> by Lesgourges, et al.
+Scroll down for the original CLASS v3.2.0 README.md contents. 
+In transition to v3.2.1, the CLASS team did a bunch of reworks, like improving the Python side of the build chain and
+removing OpenMP, I've not ported the features below to that stuff yet.]
+
+_h_-less CLASS does exactly that: it computes things without needing to specify the expansion rate today a priori.
 
 crash-less CLASS does exactly that: it fixes terrible memory leaks from the Python wrapper so that MCMC can run stably.
-_h_-less CLASS does exactly that: it computes things without needing to specify the expansion rate today a priori.
+
 These two features complement each other because, when you don't need to pin _h_ ahead of time, your model space can open up to some pretty
 wild expansion histories, which will (reasonably) terminate a CLASS run.
-
-Crash-less Explanation
-------------------------
-When CLASS (the C stuff) errors out because of a bad cosmology, it didn't free its allocated memory.
-This was no problem if just called from the command line because the OS cleans up for you.
-But if called from the Python wrapper, this became a severe memory leak.
-If driven from MontePython or Cobaya for MCMC, available memory could be exhausted in seconds if the MCMC got into some squirelly place in cosmological parameter space.
-This was not a rare bug, it was around for many years and people complained about it on github, and annoyingly worked around it by just restarting as many times as necessary.
-
-This version of CLASS uses a very lightweight doubly linked list memory tracker so that, when failure happens, all allocated memory can be freed reliably.
-In my own use, MontePython and Cobaya can now run indefinitely and other diagnostics show stable memory usage over many hours of operation.
 
 _h_-less Explanation
 ------------------------
@@ -55,8 +45,30 @@ TLDR - if `without_h` is enabled, then the &omega;'s describe the universe that 
 - `inflation_H` in `primordial` and the non-linear code in `fourier` have been walled off in _h_-less operation.
 - Departures from &Lambda;CDM like dark radiation, interacting dark radiation, EDE (early DE) fluid, and scalar fields, have not been updated
 
-If you'd like to port these over, fix bugs, or do work on the other CLASS modules, I am super receptive and gracious to PRs!
+Crash-less Explanation
+------------------------
+When CLASS (the C stuff) errors out because of a bad cosmology, it didn't free its allocated memory.
+This was no problem if just called from the command line because the OS cleans up for you.
+But if called from the Python wrapper, this became a severe memory leak.
+If driven from MontePython or Cobaya for MCMC, available memory could be exhausted in seconds if the MCMC got into some squirelly place in cosmological parameter space.
+This was not a rare bug, it was around for many years and people complained about it on github, and annoyingly worked around it by just restarting as many times as necessary.
 
+This version of CLASS uses a very lightweight doubly linked list memory tracker so that, when failure happens, all allocated memory can be freed reliably.
+In my own use, MontePython and Cobaya can now run indefinitely and other diagnostics show stable memory usage over many hours of operation.
+
+Contributions
+---------------
+If you'd like to port over existing features, fix bugs, or do work on the other CLASS modules, I am super receptive and gracious to PRs!
+
+Attribution
+---------------
+Thank you for considering our fork for your scientific work!  If you've found this fork to be useful, in addition to the original CLASS paper, we ask that you please cite:
+
+<a href="https://ui.adsabs.harvard.edu/abs/2025PhRvL.135h1003A">Positive Neutrino Masses with DESI DR2 via Matter Conversion to Dark Energy</a> S. P. Ahlen, A. Aviles, B. Cartwright, <b>K. S. Croker</b> et al. 2025 <i>Physical Review Letters</i> <b>135</b> p.&nbsp;081003
+
+This is the first paper using the fork.
+
+----------
 (Below is the CLASS boilerplate)
 
 CLASS: Cosmic Linear Anisotropy Solving System  {#mainpage}

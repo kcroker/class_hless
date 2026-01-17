@@ -422,21 +422,34 @@ int background_functions(
   /** - compute each component's density and pressure */
 
   /* photons */
-  pvecback[pba->index_bg_rho_g] = pba->Omega0_g * pow(pba->H0,2) / pow(a,4);
+  // KC 5/24/24
+  // Gotta get the units right.
+  pvecback[pba->index_bg_rho_g] = pba->omega0_g * _little_omega_to_CLASS_ / pow(a,4);
   rho_tot += pvecback[pba->index_bg_rho_g];
   p_tot += (1./3.) * pvecback[pba->index_bg_rho_g];
   dp_dloga += -(4./3.) * pvecback[pba->index_bg_rho_g];
   rho_r += pvecback[pba->index_bg_rho_g];
 
   /* baryons */
-  pvecback[pba->index_bg_rho_b] = pba->Omega0_b * pow(pba->H0,2) / pow(a,3);
+  pvecback[pba->index_bg_rho_b] = pba->omega0_b * _little_omega_to_CLASS_ / pow(a,3);
+
+  // KC 6/19/24
+  // If we have CCBH, baryons get depleted
+  if(pba->has_ccbh == _TRUE_) {
+
+    // KC 6/19/24
+    // OOO
+    // We can smush this with the above and save ourselves an evaluation of 1 / pow(a,3)
+    pvecback[pba->index_bg_rho_b] -= pvecback_B[pba->index_bi_consumption_comoving] / pow(a,3);
+  }
+  
   rho_tot += pvecback[pba->index_bg_rho_b];
   p_tot += 0;
   rho_m += pvecback[pba->index_bg_rho_b];
 
   /* cdm */
   if (pba->has_cdm == _TRUE_) {
-    pvecback[pba->index_bg_rho_cdm] = pba->Omega0_cdm * pow(pba->H0,2) / pow(a,3);
+    pvecback[pba->index_bg_rho_cdm] = pba->omega0_cdm * _little_omega_to_CLASS_ / pow(a,3);
     rho_tot += pvecback[pba->index_bg_rho_cdm];
     p_tot += 0.;
     rho_m += pvecback[pba->index_bg_rho_cdm];
@@ -444,6 +457,7 @@ int background_functions(
 
   /* idm */
   if (pba->has_idm == _TRUE_) {
+    // XXX
     pvecback[pba->index_bg_rho_idm] = pba->Omega0_idm * pow(pba->H0,2) / pow(a,3);
     rho_tot += pvecback[pba->index_bg_rho_idm];
     p_tot += 0.;
@@ -531,7 +545,7 @@ int background_functions(
 
   /* Lambda */
   if (pba->has_lambda == _TRUE_) {
-    pvecback[pba->index_bg_rho_lambda] = pba->Omega0_lambda * pow(pba->H0,2);
+    pvecback[pba->index_bg_rho_lambda] = pba->omega0_lambda * _little_omega_to_CLASS_;
     rho_tot += pvecback[pba->index_bg_rho_lambda];
     p_tot -= pvecback[pba->index_bg_rho_lambda];
   }
@@ -546,6 +560,17 @@ int background_functions(
     class_call(background_w_fld(pba,a,&w_fld,&dw_over_da,&integral_fld), pba->error_message, pba->error_message);
     pvecback[pba->index_bg_w_fld] = w_fld;
 
+    // KC 6/19/24
+    // If we have CCBH, then move quantities from the "integrate me plz" category B
+    // to the interpolation backing tables
+    //
+    if (pba->has_ccbh == _TRUE_) {
+      pvecback[pba->index_bg_rho_star] = pvecback_B[pba->index_bi_rho_star];
+
+      // Could be convenient to directly have the consumption, but I can always project from
+      // little omegas and subtract the remaining baryonic density.
+    }
+    
     // Obsolete: at the beginning, we had here the analytic integral solution corresponding to the case w=w0+w1(1-a/a0):
     // pvecback[pba->index_bg_rho_fld] = pba->Omega0_fld * pow(pba->H0,2) / pow(a,3.*(1.+pba->w0_fld+pba->wa_fld)) * exp(3.*pba->wa_fld*(a-1.));
     // But now everthing is integrated numerically for a given w_fld(a) defined in the function background_w_fld.
@@ -557,7 +582,7 @@ int background_functions(
 
   /* relativistic neutrinos (and all relativistic relics) */
   if (pba->has_ur == _TRUE_) {
-    pvecback[pba->index_bg_rho_ur] = pba->Omega0_ur * pow(pba->H0,2) / pow(a,4);
+    pvecback[pba->index_bg_rho_ur] = pba->omega0_ur * _little_omega_to_CLASS_ / pow(a,4);
     rho_tot += pvecback[pba->index_bg_rho_ur];
     p_tot += (1./3.) * pvecback[pba->index_bg_rho_ur];
     dp_dloga += -(4./3.) * pvecback[pba->index_bg_rho_ur];
@@ -676,6 +701,9 @@ int background_w_fld(
 
   /** - first, define the function w(a) */
   switch (pba->fluid_equation_of_state) {
+  case CCBH:
+    *w_fld = pba->w0_fld;
+    break;
   case CLP:
     *w_fld = pba->w0_fld + pba->wa_fld * (1. - a);
     break;
@@ -690,6 +718,7 @@ int background_w_fld(
       - (pba->Omega0_fld - pba->Omega_EDE*(1.-pow(a,-3.*pba->w0_fld)))*(1.-pba->Omega0_fld)*3.*pba->w0_fld*pow(a,3.*pba->w0_fld-1.)/pow(pba->Omega0_fld+(1.-pba->Omega0_fld)*pow(a,3.*pba->w0_fld),2)
       + pba->Omega_EDE*3.*pba->w0_fld*pow(a,-3.*pba->w0_fld-1.);
 
+    // XXX
     // find a_equality (needed because EDE tracks first radiation, then matter)
     Omega_r = pba->Omega0_g * (1. + 3.044 * 7./8.*pow(4./11.,4./3.)); // assumes LambdaCDM + eventually massive neutrinos so light that they are relativistic at equality; needs to be generalised later on.
     Omega_m = pba->Omega0_b;
@@ -711,6 +740,16 @@ int background_w_fld(
       analytic expression of the derivative of the previous
       function, let's use it! */
   switch (pba->fluid_equation_of_state) {
+  case CCBH:
+
+    //
+    // KC 6/19/24
+    // Assume constant w for now for simplicity.
+    // In principle, depending on local object structure, and population abundances,
+    // w can evolve.  Let's assume this effect is not dominant yet.
+    //
+    *dw_over_da_fld = 0.0;
+    break;
   case CLP:
     *dw_over_da_fld = - pba->wa_fld;
     break;
@@ -734,6 +773,11 @@ int background_w_fld(
       a=a_ini, using for instance Romberg integration. It should be
       fast, simple, and accurate enough. */
   switch (pba->fluid_equation_of_state) {
+  case CCBH:
+    // KC 6/24/24
+    // Follow the above guidance.
+    *integral_fld = 0.0;
+    break;
   case CLP:
     *integral_fld = 3.*((1.+pba->w0_fld+pba->wa_fld)*log(1./a) + pba->wa_fld*(a-1.));
     break;
@@ -885,13 +929,13 @@ int background_free_noinput(
                             struct background *pba
                             ) {
 
-  free(pba->tau_table);
-  free(pba->z_table);
-  free(pba->loga_table);
-  free(pba->d2tau_dz2_table);
-  free(pba->d2z_dtau2_table);
-  free(pba->background_table);
-  free(pba->d2background_dloga2_table);
+  class_free(pba->tau_table);
+  class_free(pba->z_table);
+  class_free(pba->loga_table);
+  class_free(pba->d2tau_dz2_table);
+  class_free(pba->d2z_dtau2_table);
+  class_free(pba->background_table);
+  class_free(pba->d2background_dloga2_table);
 
   return _SUCCESS_;
 }
@@ -911,40 +955,40 @@ int background_free_input(
 
   if (pba->Omega0_ncdm_tot != 0.) {
     for (k=0; k<pba->N_ncdm; k++) {
-      free(pba->q_ncdm[k]);
-      free(pba->w_ncdm[k]);
-      free(pba->q_ncdm_bg[k]);
-      free(pba->w_ncdm_bg[k]);
-      free(pba->dlnf0_dlnq_ncdm[k]);
+      class_free(pba->q_ncdm[k]);
+      class_free(pba->w_ncdm[k]);
+      class_free(pba->q_ncdm_bg[k]);
+      class_free(pba->w_ncdm_bg[k]);
+      class_free(pba->dlnf0_dlnq_ncdm[k]);
     }
-    free(pba->ncdm_quadrature_strategy);
-    free(pba->ncdm_input_q_size);
-    free(pba->ncdm_qmax);
-    free(pba->q_ncdm);
-    free(pba->w_ncdm);
-    free(pba->q_ncdm_bg);
-    free(pba->w_ncdm_bg);
-    free(pba->dlnf0_dlnq_ncdm);
-    free(pba->q_size_ncdm);
-    free(pba->q_size_ncdm_bg);
-    free(pba->M_ncdm);
-    free(pba->T_ncdm);
-    free(pba->ksi_ncdm);
-    free(pba->deg_ncdm);
-    free(pba->Omega0_ncdm);
-    free(pba->m_ncdm_in_eV);
-    free(pba->factor_ncdm);
+    class_free(pba->ncdm_quadrature_strategy);
+    class_free(pba->ncdm_input_q_size);
+    class_free(pba->ncdm_qmax);
+    class_free(pba->q_ncdm);
+    class_free(pba->w_ncdm);
+    class_free(pba->q_ncdm_bg);
+    class_free(pba->w_ncdm_bg);
+    class_free(pba->dlnf0_dlnq_ncdm);
+    class_free(pba->q_size_ncdm);
+    class_free(pba->q_size_ncdm_bg);
+    class_free(pba->M_ncdm);
+    class_free(pba->T_ncdm);
+    class_free(pba->ksi_ncdm);
+    class_free(pba->deg_ncdm);
+    class_free(pba->Omega0_ncdm);
+    class_free(pba->m_ncdm_in_eV);
+    class_free(pba->factor_ncdm);
     if (pba->got_files!=NULL)
-      free(pba->got_files);
+      class_free(pba->got_files);
     if (pba->ncdm_psd_files!=NULL)
-      free(pba->ncdm_psd_files);
+      class_free(pba->ncdm_psd_files);
     if (pba->ncdm_psd_parameters!=NULL)
-      free(pba->ncdm_psd_parameters);
+      class_free(pba->ncdm_psd_parameters);
   }
 
   if (pba->Omega0_scf != 0.) {
     if (pba->scf_parameters != NULL)
-      free(pba->scf_parameters);
+      class_free(pba->scf_parameters);
   }
   return _SUCCESS_;
 }
@@ -984,13 +1028,13 @@ int background_indices(
   pba->has_curvature = _FALSE_;
   pba->has_varconst  = _FALSE_;
 
-  if (pba->Omega0_cdm != 0.)
+  if (pba->omega0_cdm != 0.)
     pba->has_cdm = _TRUE_;
 
   if (pba->Omega0_idm != 0.)
     pba->has_idm = _TRUE_;
 
-  if (pba->Omega0_ncdm_tot != 0.)
+  if (pba->omega0_ncdm_tot != 0.)
     pba->has_ncdm = _TRUE_;
 
   if (pba->Omega0_dcdmdr != 0.) {
@@ -1002,13 +1046,13 @@ int background_indices(
   if (pba->Omega0_scf != 0.)
     pba->has_scf = _TRUE_;
 
-  if (pba->Omega0_lambda != 0.)
+  if (pba->omega0_lambda != 0.)
     pba->has_lambda = _TRUE_;
 
-  if (pba->Omega0_fld != 0.)
+  if (pba->omega0_fld != 0. || pba->has_ccbh == _TRUE_)
     pba->has_fld = _TRUE_;
 
-  if (pba->Omega0_ur != 0.)
+  if (pba->omega0_ur != 0.)
     pba->has_ur = _TRUE_;
 
   if (pba->Omega0_idr != 0.)
@@ -1076,6 +1120,9 @@ int background_indices(
   class_define_index(pba->index_bg_rho_fld,pba->has_fld,index_bg,1);
   class_define_index(pba->index_bg_w_fld,pba->has_fld,index_bg,1);
 
+  /* - index for integrated SFRD, with correct Hubble */
+  class_define_index(pba->index_bg_rho_star, pba->has_ccbh, index_bg, 1);
+  
   /* - index for ultra-relativistic neutrinos/species */
   class_define_index(pba->index_bg_rho_ur,pba->has_ur,index_bg,1);
 
@@ -1165,6 +1212,10 @@ int background_indices(
   class_define_index(pba->index_bi_phi_scf,pba->has_scf,index_bi,1);
   class_define_index(pba->index_bi_phi_prime_scf,pba->has_scf,index_bi,1);
 
+  /* -> CCBH variables */
+  class_define_index(pba->index_bi_rho_star, pba->has_ccbh,index_bi,1);
+  class_define_index(pba->index_bi_consumption_comoving, pba->has_ccbh, index_bi,1);
+  
   /* End of {B} variables */
   pba->bi_B_size = index_bi;
 
@@ -1442,8 +1493,8 @@ int background_ncdm_init(
                                pba->error_message),
                  pba->error_message,
                  pba->error_message);
-      pba->q_ncdm[k]=realloc(pba->q_ncdm[k],pba->q_size_ncdm[k]*sizeof(double));
-      pba->w_ncdm[k]=realloc(pba->w_ncdm[k],pba->q_size_ncdm[k]*sizeof(double));
+      pba->q_ncdm[k]=tracked_realloc(pba->q_ncdm[k],pba->q_size_ncdm[k]*sizeof(double));
+      pba->w_ncdm[k]=tracked_realloc(pba->w_ncdm[k],pba->q_size_ncdm[k]*sizeof(double));
 
 
       if (pba->background_verbose > 0) {
@@ -1470,8 +1521,8 @@ int background_ncdm_init(
                  pba->error_message,
                  pba->error_message);
 
-      pba->q_ncdm_bg[k]=realloc(pba->q_ncdm_bg[k],pba->q_size_ncdm_bg[k]*sizeof(double));
-      pba->w_ncdm_bg[k]=realloc(pba->w_ncdm_bg[k],pba->q_size_ncdm_bg[k]*sizeof(double));
+      pba->q_ncdm_bg[k]=tracked_realloc(pba->q_ncdm_bg[k],pba->q_size_ncdm_bg[k]*sizeof(double));
+      pba->w_ncdm_bg[k]=tracked_realloc(pba->w_ncdm_bg[k],pba->q_size_ncdm_bg[k]*sizeof(double));
 
       /** - in verbose mode, inform user of number of sampled momenta
           for background quantities */
@@ -1564,9 +1615,9 @@ int background_ncdm_init(
 
     /* If allocated, deallocate interpolation table:  */
     if ((pba->got_files!=NULL)&&(pba->got_files[k]==_TRUE_)) {
-      free(pbadist.q);
-      free(pbadist.f0);
-      free(pbadist.d2f0);
+      class_free(pbadist.q);
+      class_free(pbadist.f0);
+      class_free(pbadist.d2f0);
     }
   }
 
@@ -1632,12 +1683,23 @@ int background_ncdm_momenta(
     q2 = qvec[index_q]*qvec[index_q];
 
     /* energy */
+    // KC 6/24/24
+    // See Komatsu 2011, Eqn. (22).
+    // This projection is fine, because its just phase space
+    // and the neutrino masses are not changing.
+    //
+    // And this is set by early universe physics, where there
+    // is no decay or contribution to this species.
+    //
     epsilon = sqrt(q2+M*M/(1.+z)/(1.+z));
 
     /* integrand of the various quantities */
     if (n!=NULL) *n += q2*wvec[index_q];
     if (rho!=NULL) *rho += q2*epsilon*wvec[index_q];
     if (p!=NULL) *p += q2*q2/3./epsilon*wvec[index_q];
+
+    // KC 6/24/24
+    // This looks like the derivative of Komatsu 2011, Eqn. (22)
     if (drho_dM!=NULL) *drho_dM += q2*M/(1.+z)/(1.+z)/epsilon*wvec[index_q];
     if (pseudo_p!=NULL) *pseudo_p += pow(q2/epsilon,3)/3.0*wvec[index_q];
   }
@@ -1669,7 +1731,20 @@ int background_ncdm_M_from_Omega(
   double rho0,rho,n,M,deltaM,drhodM;
   int iter,maxiter=50;
 
-  rho0 = pba->H0*pba->H0*pba->Omega0_ncdm[n_ncdm]; /*Remember that rho is defined such that H^2=sum(rho_i) */
+  // KC 6/26/24
+  // Does this function do an implicit conversion????
+  // Because by all other usages, M_ncdm IS omega0_ncdm.
+  // So he must be changing what it means at this stage in the
+  // game?
+  //rho0 = pba->H0*pba->H0*pba->Omega0_ncdm[n_ncdm]; /*Remember that rho is defined such that H^2=sum(rho_i) */
+
+  //
+  // The only time this function gets called, M_ncdm[] *is* still containing a little omega,
+  // so this is okay.
+  //
+  rho0 = pba->M_ncdm[n_ncdm] * _little_omega_to_CLASS_;
+  
+  // Yup.  That was it.  He's redefining M_ncdm[] in this function >_<
   M = 0.0;
 
   background_ncdm_momenta(pba->q_ncdm_bg[n_ncdm],
@@ -1685,9 +1760,9 @@ int background_ncdm_M_from_Omega(
                           NULL);
 
   /* Is the value of Omega less than a massless species?*/
-  class_test(rho0<rho,pba->error_message,
+  class_test(rho0 < rho, pba->error_message,
              "The value of Omega for the %dth species, %g, is less than for a massless species! It should be atleast %g. Check your input.",
-             n_ncdm,pba->Omega0_ncdm[n_ncdm],pba->Omega0_ncdm[n_ncdm]*rho/rho0);
+             n_ncdm, pba->Omega0_ncdm[n_ncdm], pba->Omega0_ncdm[n_ncdm] * rho / rho0);
 
   /* In the strict NR limit we have rho = n*(M) today, giving a zeroth order guess: */
   M = rho0/n; /* This is our guess for M. */
@@ -1742,7 +1817,7 @@ int background_checks(
   int filenum=0;
 
   /** - control that we have photons and baryons in the problem */
-  class_test((pba->Omega0_g<=0) || (pba->Omega0_b<=0),
+  class_test((pba->omega0_g<=0) || (pba->omega0_b<=0),
              pba->error_message,
              "CLASS is conceived to work in a universe containing at least two species: photons and baryons. You could work in the limit where Omega_g or Omega_b are very small, but not zero");
 
@@ -1755,10 +1830,12 @@ int background_checks(
     "H0=%g out of bounds (%g<H0<%g) \n",pba->H0,_H0_SMALL_,_H0_BIG_);*/
 
   /* consistency between h and H0 */
-  class_test(fabs(pba->h * 1.e5 / _c_  / pba->H0 -1.)>ppr->smallest_allowed_variation,
-             pba->error_message,
-             "inconsistency between Hubble and reduced Hubble parameters: you have H0=%f/Mpc=%fkm/s/Mpc, but h=%f",pba->H0,pba->H0/1.e5* _c_,pba->h);
-
+  if(pba->has_h == _TRUE_) {
+    class_test(fabs(pba->h * 1.e5 / _c_  / pba->H0 -1.)>ppr->smallest_allowed_variation,
+	       pba->error_message,
+	       "inconsistency between Hubble and reduced Hubble parameters: you have H0=%f/Mpc=%fkm/s/Mpc, but h=%f",pba->H0,pba->H0/1.e5* _c_,pba->h);
+  }
+  
   /* T_cmb in K */
   /* Many users asked for this test to be supressed. It is commented out. */
   /*class_test((pba->T_cmb < _TCMB_SMALL_)||(pba->T_cmb > _TCMB_BIG_),
@@ -2089,26 +2166,94 @@ int background_solve(
   /**  - store information in the background structure */
   pba->Omega0_m = pba->background_table[(pba->bt_size-1)*pba->bg_size+pba->index_bg_Omega_m];
   pba->Omega0_r = pba->background_table[(pba->bt_size-1)*pba->bg_size+pba->index_bg_Omega_r];
-  pba->Omega0_de = 1. - (pba->Omega0_m + pba->Omega0_r + pba->Omega0_k);
+  // KC 5/24/24
+  // XXX needs to get fixed
+  if(pba->has_h == _TRUE_) {
+    pba->Omega0_de = 1. - (pba->Omega0_m + pba->Omega0_r + pba->Omega0_k);
+  }
+  else {
+
+    // KC 5/27/24
+    // If we don't have h, we do have it now.  This is so the downstream code
+    // can remain unalatered.  Woot.
+    pba->H0 = pba->background_table[(pba->bt_size-1)*pba->bg_size+pba->index_bg_H];
+
+    // Now compute the little guy
+    pba->h = pba->H0 / 1e5 * _c_;
+
+    if (pba->background_verbose > 0)
+      printf("h-less: computed H0 = %g (1/Mpc) and h = %g\n", pba->H0, pba->h);
+
+    // KC 5/27/24
+    // Now go through and compute the *projected* Omegas, because they are used downstream.
+    //
+    // XXX this will get the thermodynamics wrong, because the thermodynamics needs projected physical
+    //     and this quantity is a hybrid...
+    if (pba->background_verbose > 0)
+      printf("h-less: Omega0's (big Omegas) are going to be honestly what the final fractions are...\n");
+
+    pba->Omega0_b = pba->background_table[(pba->bt_size-1)*pba->bg_size + pba->index_bg_rho_b] / pow(pba->H0, 2);
+    pba->Omega0_cdm = pba->omega0_cdm / pba->h / pba->h;
+    pba->Omega0_ur = pba->omega0_ur / pba->h / pba->h;
+    pba->Omega0_g = pba->omega0_g / pba->h / pba->h;
+
+    for (n_ncdm=0; n_ncdm<pba->N_ncdm; n_ncdm++) {
+      //
+      // KC 6/26/24
+      // M_ncdm at this point is actually the CLASS units mass, not
+      // the omega0_ncdm that was read in initially into this variable.
+      //
+      // So we actually need to look up the CLASS physical density 
+      pba->Omega0_ncdm[n_ncdm] = pba->background_table[(pba->bt_size-1)*pba->bg_size + pba->index_bg_rho_ncdm1+n_ncdm] / pow(pba->H0, 2);
+    }
+    
+    // Note that minus sign
+    // KC 7/20/25
+    // Because pba->K is already in CLASS units, we should be converting with H0 (in CLASS units)
+    pba->Omega0_k = -pba->K / pow(pba->H0, 2);
+    pba->Omega0_lambda = pba->omega0_lambda / pba->h / pba->h;
+    
+    // We don't do it by closure anymore, we rip it from the table.
+    // pba->Omega0_de = 0.0; // pba->background_table[(pba->bt_size-1)*pba->bg_size*pba->index_bg_Omega_de];
+
+    if(pba->has_fld)
+      pba->Omega0_fld = pba->background_table[(pba->bt_size-1)*pba->bg_size + pba->index_bg_rho_fld] / pow(pba->H0, 2);
+  }
 
   /* Compute the density fraction of non-free-streaming matter (in the minimal LambdaCDM model, this would be just Omega_b + Omega_cdm). This definition takes into account interating, decaying and warm dark matter, but it would need to be refined if some part of the matter component was modelled by the fluid (fld) or the scalar field (scf). */
-  pba->Omega0_nfsm =  pba->Omega0_b;
+  // XXX
+  pba->omega0_nfsm =  pba->omega0_b;
   if (pba->has_cdm == _TRUE_)
-    pba->Omega0_nfsm += pba->Omega0_cdm;
+    pba->omega0_nfsm += pba->omega0_cdm;
+
+  // We will define a big Omega0 for it, but this is just asking for trouble
+  pba->Omega0_nfsm = pba->omega0_nfsm / pba->h / pba->h;
+  
+  // XXX
+  // KC 6/17/24
+  // HyRec uses the projected physical density of non-free streaming species
+  // so we need to compute this correctly
+
+  // KC 7/20/25
+  // The above should be the correct projected values for CDM and baryons at recombination...
+  
+  //
+  /*
   if (pba->has_idm == _TRUE_)
     pba->Omega0_nfsm += pba->Omega0_idm;
   if (pba->has_dcdm == _TRUE_)
     pba->Omega0_nfsm += pba->Omega0_dcdm;
   for (n_ncdm=0;n_ncdm<pba->N_ncdm; n_ncdm++) {
-    /* here we define non-free-streaming matter as: any non-relatistic species with a dimensionless ratio m/T bigger than a threshold ppr->M_nfsm_threshold; if this threshold is of the order of 10^4, this corresponds to the condition "becoming non-relativistic during radiation domination". Beware: this definition won't work in the case in which the user passes a customised p.s.d. for ncdm, such that M_ncdm is not defined.  */
+    // here we define non-free-streaming matter as: any non-relatistic species with a dimensionless ratio m/T bigger than a threshold ppr->M_nfsm_threshold; if this threshold is of the order of 10^4, this corresponds to the condition "becoming non-relativistic during radiation domination". Beware: this definition won't work in the case in which the user passes a customised p.s.d. for ncdm, such that M_ncdm is not defined. 
     if (pba->M_ncdm[n_ncdm] > ppr->M_nfsm_threshold) {
       pba->Omega0_nfsm += pba->Omega0_ncdm[n_ncdm];
     }
-  }
+  */
 
-  free(pvecback);
-  free(pvecback_integration);
-  free(used_in_output);
+
+  class_free(pvecback);
+  class_free(pvecback_integration);
+  class_free(used_in_output);
 
   return _SUCCESS_;
 
@@ -2141,7 +2286,7 @@ int background_initial_conditions(
   double a;
 
   double rho_ncdm, p_ncdm, rho_ncdm_rel_tot=0.;
-  double f,Omega_rad, rho_rad;
+  double f,omega_rad, rho_rad;
   int counter,is_early_enough,n_ncdm;
   double scf_lambda;
   double rho_fld_today;
@@ -2195,19 +2340,28 @@ int background_initial_conditions(
   }
 
   /* Set initial values of {B} variables: */
-  Omega_rad = pba->Omega0_g;
+  omega_rad = pba->omega0_g;
   if (pba->has_ur == _TRUE_) {
-    Omega_rad += pba->Omega0_ur;
+    omega_rad += pba->omega0_ur;
   }
   if (pba->has_idr == _TRUE_) {
-    Omega_rad += pba->Omega0_idr;
+    // XXX
+    omega_rad += pba->Omega0_idr;
   }
-  rho_rad = Omega_rad*pow(pba->H0,2)/pow(a,4);
+  rho_rad = omega_rad/pow(a,4) * _little_omega_to_CLASS_;
+  
   if (pba->has_ncdm == _TRUE_) {
     /** - We must add the relativistic contribution from NCDM species */
+    //fprintf(stderr, "rho_rad (before): %e\nrho_ncdm_rel_tot: %e\n", rho_rad, rho_ncdm_rel_tot);
     rho_rad += rho_ncdm_rel_tot;
   }
   if (pba->has_dcdm == _TRUE_) {
+    // KC 5/24/24
+    // XXX This is now broken when we specify things with physical densities
+    class_test(pba->has_h == _FALSE_,
+	       pba->error_message,
+	       "DCDM needs to be updated to work with h determined at end of integration");
+
     /* Remember that the critical density today in CLASS conventions is H0^2 */
     pvecback_integration[pba->index_bi_rho_dcdm] =
       pba->Omega_ini_dcdm*pba->H0*pba->H0*pow(a,-3);
@@ -2225,7 +2379,9 @@ int background_initial_conditions(
        * Instead we use the Taylor expansion of this equation, which is equivalent to
        * ignoring f(a) in the Hubble rate.
        */
-      f = 1./3.*pow(a,6)*pvecback_integration[pba->index_bi_rho_dcdm]*pba->Gamma_dcdm/pow(pba->H0,3)/sqrt(Omega_rad);
+
+      // XXX almost certainly
+      f = 1./3.*pow(a,6)*pvecback_integration[pba->index_bi_rho_dcdm]*pba->Gamma_dcdm/pow(pba->H0,3)/sqrt(omega_rad/pba->h/pba->h);
       pvecback_integration[pba->index_bi_rho_dr] = f*pba->H0*pba->H0/pow(a,4);
     }
     else{
@@ -2236,20 +2392,35 @@ int background_initial_conditions(
 
   if (pba->has_fld == _TRUE_) {
 
-    /* rho_fld today */
-    rho_fld_today = pba->Omega0_fld * pow(pba->H0,2);
+    if(pba->has_ccbh == _FALSE_) {
+      
+      /* rho_fld today */
+      // rho_fld_today = pba->Omega0_fld * pow(pba->H0,2);
+      rho_fld_today = pba->omega0_fld * _little_omega_to_CLASS_; 
 
-    /* integrate rho_fld(a) from a_ini to a_0, to get rho_fld(a_ini) given rho_fld(a0) */
-    class_call(background_w_fld(pba,a,&w_fld,&dw_over_da_fld,&integral_fld), pba->error_message, pba->error_message);
+      /* integrate rho_fld(a) from a_ini to a_0, to get rho_fld(a_ini) given rho_fld(a0) */
+      class_call(background_w_fld(pba,a,&w_fld,&dw_over_da_fld,&integral_fld), pba->error_message, pba->error_message);
 
-    /* Note: for complicated w_fld(a) functions with no simple
-       analytic integral, this is the place were you should compute
-       numerically the simple 1d integral [int_{a_ini}^{a_0} 3
-       [(1+w_fld)/a] da] (e.g. with the Romberg method?) instead of
-       calling background_w_fld */
+      /* Note: for complicated w_fld(a) functions with no simple
+	 analytic integral, this is the place were you should compute
+	 numerically the simple 1d integral [int_{a_ini}^{a_0} 3
+	 [(1+w_fld)/a] da] (e.g. with the Romberg method?) instead of
+	 calling background_w_fld */
+      
+      /* rho_fld at initial time */
+      pvecback_integration[pba->index_bi_rho_fld] = rho_fld_today * exp(integral_fld);
+    }
+    else {
 
-    /* rho_fld at initial time */
-    pvecback_integration[pba->index_bi_rho_fld] = rho_fld_today * exp(integral_fld);
+      // KC 6/19/24
+      // We have CCBH, so rho_fld_today is unknown at this point
+      // and we assume zero fluid at initial conditions
+      // Need to define all these zero so the integrator doesn't go wild
+      // based on whatever happens to be sitting there in memory.
+      pvecback_integration[pba->index_bi_rho_fld] = 0.0;
+      pvecback_integration[pba->index_bi_rho_star] = 0.0;
+      pvecback_integration[pba->index_bi_consumption_comoving] = 0.0;
+    }
 
   }
 
@@ -2401,7 +2572,7 @@ int background_find_equality(
     printf("    corresponding to conformal time = %f Mpc\n",pba->tau_eq);
   }
 
-  free(pvecback);
+  class_free(pvecback);
 
   return _SUCCESS_;
 
@@ -2623,6 +2794,16 @@ int background_derivs(
   /** - calculate detivative of sound horizon \f$ drs/dloga = drs/dtau * dtau/dloga = c_s/aH \f$*/
   dy[pba->index_bi_rs] = 1./a/H/sqrt(3.*(1.+3.*pvecback[pba->index_bg_rho_b]/4./pvecback[pba->index_bg_rho_g]))*sqrt(1.-pba->K*y[pba->index_bi_rs]*y[pba->index_bi_rs]); // TBC: curvature correction
 
+  //
+  // KC 4/11/25
+  // XXX
+  // Because we are depleting baryons, the \rho_m is no longer \propto 1/a^3.
+  // So we have to solve a generalized growth equation
+  //
+  // The only place this is used though is in fourier.c, and we're not using the non-linear
+  // module yet, so don't worry about it yet.
+  //
+  
   /** - solve second order growth equation \f$ [D''(\tau)=-aHD'(\tau)+3/2 a^2 \rho_M D(\tau) \f$
       written as \f$ dD/dloga = D' / (aH) \f$ and \f$ dD'/dloga = -D' + (3/2) (a/H) \rho_M D \f$ */
   rho_M = pvecback[pba->index_bg_rho_b];
@@ -2647,8 +2828,29 @@ int background_derivs(
   }
 
   if (pba->has_fld == _TRUE_) {
-    /** - Compute fld density \f$ d\rho/dloga = -3 (1+w_{fld}(a)) \rho \f$ */
-    dy[pba->index_bi_rho_fld] = -3.*(1.+pvecback[pba->index_bg_w_fld])*y[pba->index_bi_rho_fld];
+
+    if(pba->fluid_equation_of_state != CCBH) {
+      /** - Compute fld density \f$ d\rho/dloga = -3 (1+w_{fld}(a)) \rho \f$ */
+      dy[pba->index_bi_rho_fld] = -3.*(1.+pvecback[pba->index_bg_w_fld])*y[pba->index_bi_rho_fld];
+    }
+    else {
+
+      // KC 6/18/24
+      // The integrand appearing in (2.1) of 2405.12282, but with Xi on the inside
+      // for more physically realistic models down the road.  Also, shifted to dloga instead
+      // of da: \int whatever da = \int whatever da/dloga dloga, so we multiply the integrand in
+      // (2.1) by da/dloga = a
+      //
+      // (The sfrd here is *not* multiplied by Madau's (1-R) return fraction modulation, because
+      // we're interested in the production.)
+      dy[pba->index_bi_rho_star] = ccbh_sfrd(pba, a, H, loga)/H;
+      dy[pba->index_bi_consumption_comoving] = dy[pba->index_bi_rho_star]*ccbh_Xi(pba, a, H, loga);
+
+      // KC 6/19/24
+      // Now give the DE produced and evolved
+      // Just use fixed w for now for simplicity
+      dy[pba->index_bi_rho_fld] = -3 * y[pba->index_bi_rho_fld] * (1 + pba->w0_fld) + pba->slip_CCBH * dy[pba->index_bi_consumption_comoving]/pow(a,3);
+    }
   }
 
   if (pba->has_scf == _TRUE_) {
@@ -2717,8 +2919,8 @@ int background_sources(
       in one row of background_table
       The value of {B} variables in pData are also copied to pvecback.*/
   class_call(background_functions(pba, a, y, long_info, bg_table_row),
-             pba->error_message,
-             pba->error_message);
+             error_message,
+             error_message);
 
   return _SUCCESS_;
 
@@ -2794,6 +2996,11 @@ int background_output_budget(
 
     printf(" ---> Nonrelativistic Species \n");
     class_print_species("Bayrons",b);
+    if (pba->has_ccbh == _TRUE_) {
+      printf("-> Baryon depletion: %.3f%% survival\n",
+	     pba->background_table[(pba->bt_size-1)*pba->bg_size + pba->index_bg_rho_b] / (pba->omega0_b * _little_omega_to_CLASS_) * 100);
+    }
+
     budget_matter+=pba->Omega0_b;
     if (pba->has_cdm == _TRUE_) {
       class_print_species("Cold Dark Matter",cdm);
@@ -2806,8 +3013,7 @@ int background_output_budget(
     if (pba->has_dcdm == _TRUE_) {
       class_print_species("Decaying Cold Dark Matter",dcdm);
       budget_matter+=pba->Omega0_dcdm;
-    }
-
+    }    
     if (pba->N_ncdm > 0) {
       printf(" ---> Non-Cold Dark Matter Species (incl. massive neutrinos)\n");
     }

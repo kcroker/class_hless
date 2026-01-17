@@ -1,3 +1,64 @@
+crash-less & _h_-less CLASS
+=============================================
+(Scroll down for original CLASS v3.2.0 README.md contents)
+
+Author: Kevin Croker
+
+This verison forked from v3.2.0.
+The CLASS team did a bunch of reworks, like improving the Python side of the build chain and
+removing OpenMP in subsequent versions, I've not ported the features below to that stuff yet.
+
+crash-less CLASS does exactly that: it fixes terrible memory leaks from the Python wrapper so that MCMC can run stably.
+_h_-less CLASS does exactly that: it computes things without needing to specify the expansion rate today a priori.
+These two features complement each other because, when you don't need to pin _h_ ahead of time, your model space can open up to some pretty
+wild expansion histories, which will (reasonably) terminate a CLASS run.
+
+Crash-less Explanation
+------------------------
+When CLASS (the C stuff) errors out because of a bad cosmology, it didn't free its allocated memory.
+This was no problem if just called from the command line because the OS cleans up for you.
+But if called from the Python wrapper, this became a severe memory leak.
+If driven from MontePython or Cobaya for MCMC, available memory could be exhausted in seconds if the MCMC got into some squirelly place in cosmological parameter space.
+This was not a rare bug, it was around for many years and people complained about it on github, and annoyingly worked around it by just restarting as many times as necessary.
+
+This version of CLASS uses a very lightweight doubly linked list memory tracker so that, when failure happens, all allocated memory can be freed reliably.
+In my own use, MontePython and Cobaya can now run indefinitely and other diagnostics show stable memory usage over many hours of operation.
+
+_h_-less Explanation
+------------------------
+Under the hood, CLASS integrates physical densities in 1/Mpc<sup>2</sup> units.
+Yet, for accounting, closing, and in various other places convenience, it works with big &Omega;'s and _H_<sub>0</sub>.
+Although this is the standard way of "thinking" about Friedmann models, this is actually really bad for searching model space because it binds a present-day scale (_H_<sub>0</sub>) to the code that establishes initial conditions.
+For example, by writing &Omega;<sub>b</sub> _H_<sub>0</sub><sup>2</sup>/_a_<sub>i</sub>^<sup>3</sup> to get the baryon density at _a_<sub>i</sub>, we've just projected backwards assuming nothing squirrely is happening across the intervening 13.8Gyr.
+
+In this version of CLASS, all modules (except for non-linear stuff in `fourier`) have been modified to work without specification of an _H_<sub>0</sub> or an _h_.
+Its an option, that can be flagged with
+```
+without_h = yes
+```
+What then happens is that you are only permitted to specify the little omegas (&omega;'s).
+These are already physical quantities, because they have a density scale baked into them.
+CLASS then interprets the &omega; quantities as densities that _can_ be projected backwards in time for initial conditions.
+Anywhere in the code that made projection assumptions at intermediate scale factors, presumably for simplicity, has been adjusted to use the actual integrated densities determined by CLASS in the `background` module.
+Places where early-universe scales were coming into play have been shifted to use the &omega;'s.
+
+The motivation for this is that CMB experiments are telling you about early universe physics, before squirrely late-time things could be happening.
+So the best-fit parameters should be describing the early-universe.
+Other parameters can describe departures from the post-recombination conditions established by the little &omega;'s.
+The upshot of all this is that early-time and late-time physical processes determine the resultant _H_<sub>0</sub>, so it obviously becomes a derived parameter, as it should be.
+
+TLDR - if `without_h` is enabled, then the &omega;'s describe the universe that would result today if late-time physical processes do not alter the background expansion history.  Hubble can no longer be specified, as it becomes determined by the expansion history from initial conditions set by the &omega;'s projected backwards.
+
+**CAVEAT** - I don't have the expertise to modify all the nuanced scenarios which CLASS has been modified to compute suitably, and they do not seem to be in use for standard cosmological analyses.
+
+- RecFast is not yet supported. (I only adjusted HyRec2020.  HyRec2020 is the default and is apparently better anyway) 
+- `inflation_H` in `primordial` and the non-linear code in `fourier` have been walled off in _h_-less operation.
+- Departures from &Lambda;CDM like dark radiation, interacting dark radiation, EDE (early DE) fluid, and scalar fields, have not been updated
+
+If you'd like to port these over, fix bugs, or do work on the other CLASS modules, I am super receptive and gracious to PRs!
+
+(Below is the CLASS boilerplate)
+
 CLASS: Cosmic Linear Anisotropy Solving System  {#mainpage}
 ==============================================
 

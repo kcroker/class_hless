@@ -29,8 +29,8 @@ def viewdictitems(d):
     else:
         return d.viewitems()
 
-ctypedef np.float_t DTYPE_t
-ctypedef np.int_t DTYPE_i
+ctypedef np.float64_t DTYPE_t
+ctypedef np.int32_t DTYPE_i
 
 
 
@@ -100,10 +100,10 @@ cdef class Class:
     cdef distortions sd
     cdef file_content fc
 
-    cpdef int computed # Flag to see if classy has already computed with the given pars
-    cpdef int allocated # Flag to see if classy structs are allocated already
-    cpdef object _pars # Dictionary of the parameters
-    cpdef object ncp   # Keeps track of the structures initialized, in view of cleaning.
+    cdef int computed # Flag to see if classy has already computed with the given pars
+    cdef int allocated # Flag to see if classy structs are allocated already
+    cdef object _pars # Dictionary of the parameters
+    cdef object ncp   # Keeps track of the structures initialized, in view of cleaning.
 
     # Defining two new properties to recover, respectively, the parameters used
     # or the age (set after computation). Follow this syntax if you want to
@@ -128,7 +128,7 @@ cdef class Class:
         self.set(**_pars)
 
     def __cinit__(self, default=False):
-        cpdef char* dumc
+        cdef char* dumc
         self.allocated = False
         self.computed = False
         self._pars = {}
@@ -205,24 +205,9 @@ cdef class Class:
     def struct_cleanup(self):
         if(self.allocated != True):
           return
-        if "distortions" in self.ncp:
-            distortions_free(&self.sd)
-        if "lensing" in self.ncp:
-            lensing_free(&self.le)
-        if "harmonic" in self.ncp:
-            harmonic_free(&self.hr)
-        if "transfer" in self.ncp:
-            transfer_free(&self.tr)
-        if "fourier" in self.ncp:
-            fourier_free(&self.fo)
-        if "primordial" in self.ncp:
-            primordial_free(&self.pm)
-        if "perturb" in self.ncp:
-            perturbations_free(&self.pt)
-        if "thermodynamics" in self.ncp:
-            thermodynamics_free(&self.th)
-        if "background" in self.ncp:
-            background_free(&self.ba)
+
+        tracked_free_all()
+	
         self.allocated = False
         self.computed = False
 
@@ -1372,14 +1357,29 @@ cdef class Class:
     def h(self):
         return self.ba.h
 
+    def k_CCBH(self):
+        return self.ba.k_CCBH
+
+    def Xi_CCBH(self):
+        return self.ba.k_CCBH
+
+    def slip_CCBH(self):
+        return self.ba.k_CCBH
+
     def n_s(self):
         return self.pm.n_s
 
     def tau_reio(self):
         return self.th.tau_reio
 
+    def rs_rec(self):
+        return self.th.rs_rec
+
     def Omega_m(self):
         return self.ba.Omega0_m
+
+    def Omega_b(self):
+        return self.ba.Omega0_b
 
     def Omega_r(self):
         return self.ba.Omega0_r
@@ -1400,7 +1400,13 @@ cdef class Class:
         return self.ba.Omega0_b
 
     def omega_b(self):
-        return self.ba.Omega0_b * self.ba.h * self.ba.h
+        return self.ba.omega0_b
+
+    def omega_c(self):
+        return self.ba.omega0_cdm
+
+    def omega_Lambda(self):
+        return self.ba.omega0_lambda
 
     def Neff(self):
         return self.ba.Neff
@@ -2217,6 +2223,12 @@ cdef class Class:
         for name in names:
             if name == 'h':
                 value = self.ba.h
+            elif name == 'k_CCBH':
+                value = self.ba.k_CCBH
+            elif name == 'Xi_CCBH':
+                value = self.ba.Xi_CCBH
+            elif name == 'slip_CCBH':
+                value = self.ba.slip_CCBH
             elif name == 'H0':
                 value = self.ba.h*100
             elif name == 'Omega0_lambda' or name == 'Omega_Lambda':
@@ -2230,13 +2242,18 @@ cdef class Class:
             elif name == 'm_ncdm_in_eV':
                 value = self.ba.m_ncdm_in_eV[0]
             elif name == 'm_ncdm_tot':
+	        # KC 6/25/24 XXX (projection assumptions)
                 value = self.ba.Omega0_ncdm_tot*self.ba.h*self.ba.h*93.14
             elif name == 'Neff':
                 value = self.ba.Neff
             elif name == 'Omega_m':
                 value = self.ba.Omega0_m
-            elif name == 'omega_m':
-                value = self.ba.Omega0_m*self.ba.h**2
+            elif name == 'Omega_b':
+                value = self.ba.Omega0_b
+            elif name == 'omega_c':
+                value = self.ba.omega0_cdm
+            elif name == 'omega_Lambda':
+                value = self.ba.omega0_lambda
             elif name == 'xi_idr':
                 value = self.ba.T_idr/self.ba.T_cmb
             elif name == 'N_dg':

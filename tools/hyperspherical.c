@@ -6,6 +6,9 @@
  */
 
 #include "hyperspherical.h"
+#include <assert.h>
+
+#pragma GCC poison free
 
 int hyperspherical_HIS_create(int K,
                               double beta,
@@ -26,10 +29,18 @@ int hyperspherical_HIS_create(int K,
       then relative to ppHIS.
   */
   double deltax, beta2, lambda, x, xfwd;
-  double *sqrtK, *one_over_sqrtK,*PhiL;
+  double *sqrtK, *one_over_sqrtK,*PhiL, *PhiL_outer;
   int j, k, l, nx, lmax, l_recurrence_max;
   int abort;
   int current_chunk, index_x;
+
+  //
+  // KC 7/22/25
+  // Make sure the memory tracking structures are sensible
+  // before going parallel.  SPOILERS - we are already
+  // parallel fml
+  //
+  // assert(!alloc_track_insane());
 
   beta2 = beta*beta;
   lmax = lvec[nl-1];
@@ -126,6 +137,10 @@ int hyperspherical_HIS_create(int K,
     }
     break;
   default:
+
+    // KC 7/22/25
+    // XXX
+    // This is memory leaking all over the place.
     return _FAILURE_;
   }
 
@@ -134,13 +149,54 @@ int hyperspherical_HIS_create(int K,
 
   abort = _FALSE_;
 
+  // KC 7/22/25
+  // XXX
+  // Because this gets called from update_transfer_HIS() inside a parallel 
+  // region, thread assignments seem to be going crazy
+  //
+  // Allocate one large PhiL pool, and index into that for each of the threads
+  // that happen here.  Even if its memory wasteful, maybe we won't fry the
+  // allocation tracker.
+  //
+
+  int max_threads;
+  int thread;
+  int PhiL_size;
+  //
+  // As per dox:
+  // "Note – The return value of the omp_get_max_threads routine can be used
+  //  to allocate sufficient storage dynamically for all threads in the team
+  //  formed at the subsequent active parallel region.
+  //
+  PhiL_size = (lmax+2)*_HYPER_CHUNK_;
+
+#ifdef _OPENMP
+  max_threads = omp_get_max_threads();
+#else
+  max_threads = 1;
+#endif
+
+  class_alloc(PhiL_outer, PhiL_size*max_threads*sizeof(double), error_message);  
+    
 #pragma omp parallel                                                    \
-  shared(nx,pHIS,xfwd,K,l_recurrence_max,beta,sqrtK,one_over_sqrtK,lvec,nl,xfwdidx,abort,error_message) \
-  private(j,PhiL,k,l,current_chunk,index_x)                           \
+  shared(PhiL_outer, PhiL_size, nx,pHIS,xfwd,K,l_recurrence_max,beta,sqrtK,one_over_sqrtK,lvec,nl,xfwdidx,abort,error_message) \
+  private(PhiL, thread, j,k,l,current_chunk,index_x)			\
   firstprivate(lmax)
   {
-    class_alloc_parallel(PhiL,(lmax+2)*sizeof(double)*_HYPER_CHUNK_,error_message);
+    // KC 7/22/25
+    // This is now made at "1 level deep" in the parallelization
+    //class_alloc_parallel(PhiL,(lmax+2)*sizeof(double)*_HYPER_CHUNK_,error_message);
+#ifdef _OPENMP
+    thread = omp_get_thread_num();
+#else
+    thread = 0;
+#endif
 
+    // KC 7/22/25
+    // Offset this pointer so that its somewhere reasonable
+    // inside the local chunk
+    PhiL = PhiL_outer + PhiL_size*thread;
+    
     if ((K == 1) && ((int)(beta+0.2) == (lmax+1))) {
       /** Take care of special case lmax = beta-1.
           The routine below will try to compute
@@ -153,7 +209,6 @@ int hyperspherical_HIS_create(int K,
     }
 
 #pragma omp for schedule (dynamic)              \
-
 
     for (j=0; j<MIN(nx,xfwdidx); j++){
       //Use backwards method:
@@ -228,12 +283,17 @@ int hyperspherical_HIS_create(int K,
         }
       }
     }
-    free(PhiL);
+    // class_free(PhiL);
   }
-  if (abort == _TRUE_) return _FAILURE_;
 
-  free(sqrtK);
-  free(one_over_sqrtK);
+  // KC 7/22/25
+  // What are we doing returning before deallocating our memory???
+  class_free(PhiL_outer);
+  class_free(sqrtK);
+  class_free(one_over_sqrtK);
+
+  // Now return, jfc
+  if (abort == _TRUE_) return _FAILURE_;
 
   for (k=0; k<nl; k++){
     hyperspherical_get_xmin_from_approx(K,lvec[k],beta,0.,phiminabs,pHIS->chi_at_phimin+k,NULL);
@@ -269,14 +329,16 @@ int hyperspherical_update_pointers(HyperInterpStruct *pHIS_local,
 int hyperspherical_HIS_free(HyperInterpStruct *pHIS,
                             ErrorMsg error_message){
   /** Free the Hyperspherical Interpolation Structure. */
-  free(pHIS->l);
-  free(pHIS->chi_at_phimin);
-  free(pHIS->x);
-  free(pHIS->sinK);
-  free(pHIS->cotK);
-  free(pHIS->phi);
-  free(pHIS->dphi);
+  class_free(pHIS->l);
+  class_free(pHIS->chi_at_phimin);
+  class_free(pHIS->x);
+  class_free(pHIS->sinK);
+  class_free(pHIS->cotK);
+  class_free(pHIS->phi);
+  class_free(pHIS->dphi);
 
+  // assert(!alloc_track_insane());
+  
   return _SUCCESS_;
 }
 

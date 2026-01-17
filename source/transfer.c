@@ -28,6 +28,7 @@
  */
 
 #include "transfer.h"
+#include <assert.h>
 
 /**
  * Transfer function \f$ \Delta_l^{X} (q) \f$ at a given wavenumber q.
@@ -175,8 +176,7 @@ int transfer_init(
 #ifdef _OPENMP
 
   /* instrumentation times */
-  double tstart, tstop, tspent;
-
+  double tstart, tstop, tspent;  
 #endif
 
   /** - check whether any spectrum in harmonic space (i.e., any \f$C_l\f$'s) is actually requested */
@@ -286,6 +286,8 @@ int transfer_init(
     );
   */
 
+  // assert(!alloc_track_insane());
+  
   /** - eventually read the selection and evolution functions */
 
   class_call(transfer_global_selection_read(ptr),
@@ -295,6 +297,9 @@ int transfer_init(
   /** - precompute window function for integrated nCl/sCl quantities*/
   double* window = NULL;
   if ((ppt->has_cl_lensing_potential == _TRUE_) || (ppt->has_cl_number_count == _TRUE_)) {
+
+    // KC 8/22/23
+    // This is sending a STACK address...
     class_call(transfer_precompute_selection(ppr,
                                              pba,
                                              ppt,
@@ -326,6 +331,11 @@ int transfer_init(
 
     ptw = NULL;
 
+    // KC 7/22/25
+    // INFO
+    // This sets up the thread ptw structure
+    // fprintf(stderr, "THREAD %d] Checking in...\n", omp_get_thread_num());
+    
     class_call_parallel(transfer_workspace_init(ptr,
                                                 ppr,
                                                 &ptw,
@@ -341,6 +351,8 @@ int transfer_init(
     /** - loop over all wavenumbers (parallelized).*/
     /* For each wavenumber: */
 
+    // assert(!alloc_track_insane());
+    
 #pragma omp for schedule (dynamic)
 
     for (index_q = 0; index_q < ptr->q_size; index_q++) {
@@ -360,6 +372,8 @@ int transfer_init(
                                               tau0),
                           ptr->error_message,
                           ptr->error_message);
+
+      // assert(!alloc_track_insane());
 
       class_call_parallel(transfer_compute_for_each_q(ppr,
                                                       pba,
@@ -402,7 +416,12 @@ int transfer_init(
   if (abort == _TRUE_) return _FAILURE_;
 
   /** - finally, free arrays allocated outside parallel zone */
-  free(window);
+
+  // KC 8/22/23
+  // XXX?  window is never allocated unless these conditions are true.  So this was
+  // freeing a void pointer before.  Surprisingly, free(0x0) does not die on arrival...
+  if ((ppt->has_cl_lensing_potential == _TRUE_) || (ppt->has_cl_number_count == _TRUE_))
+    class_free(window);
 
   class_call(transfer_perturbation_sources_spline_free(ppt,ptr,sources_spline),
              ptr->error_message,
@@ -441,30 +460,30 @@ int transfer_free(
   if (ptr->has_cls == _TRUE_) {
 
     for (index_md = 0; index_md < ptr->md_size; index_md++) {
-      free(ptr->l_size_tt[index_md]);
-      free(ptr->transfer[index_md]);
-      free(ptr->k[index_md]);
+      class_free(ptr->l_size_tt[index_md]);
+      class_free(ptr->transfer[index_md]);
+      class_free(ptr->k[index_md]);
     }
 
-    free(ptr->tt_size);
-    free(ptr->l_size_tt);
-    free(ptr->l_size);
-    free(ptr->l);
-    free(ptr->q);
-    free(ptr->k);
-    free(ptr->transfer);
+    class_free(ptr->tt_size);
+    class_free(ptr->l_size_tt);
+    class_free(ptr->l_size);
+    class_free(ptr->l);
+    class_free(ptr->q);
+    class_free(ptr->k);
+    class_free(ptr->transfer);
 
     if (ptr->nz_size > 0) {
-      free(ptr->nz_z);
-      free(ptr->nz_nz);
-      free(ptr->nz_ddnz);
+      class_free(ptr->nz_z);
+      class_free(ptr->nz_nz);
+      class_free(ptr->nz_ddnz);
     }
 
     if (ptr->nz_evo_size > 0) {
-      free(ptr->nz_evo_z);
-      free(ptr->nz_evo_nz);
-      free(ptr->nz_evo_dlog_nz);
-      free(ptr->nz_evo_dd_dlog_nz);
+      class_free(ptr->nz_evo_z);
+      class_free(ptr->nz_evo_nz);
+      class_free(ptr->nz_evo_dlog_nz);
+      class_free(ptr->nz_evo_dd_dlog_nz);
     }
   }
 
@@ -774,13 +793,13 @@ int transfer_perturbation_sources_free(
              ((ppt->has_source_phi_plus_psi == _TRUE_) && (index_tp == ppt->index_tp_phi_plus_psi)) ||
              ((ppt->has_source_psi == _TRUE_) && (index_tp == ppt->index_tp_psi)))) {
 
-          free(sources[index_md][index_ic * ppt->tp_size[index_md] + index_tp]);
+          class_free(sources[index_md][index_ic * ppt->tp_size[index_md] + index_tp]);
         }
       }
     }
-    free(sources[index_md]);
+    class_free(sources[index_md]);
   }
-  free(sources);
+  class_free(sources);
 
   return _SUCCESS_;
 }
@@ -797,12 +816,12 @@ int transfer_perturbation_sources_spline_free(
   for (index_md = 0; index_md < ptr->md_size; index_md++) {
     for (index_ic = 0; index_ic < ppt->ic_size[index_md]; index_ic++) {
       for (index_tp = 0; index_tp < ppt->tp_size[index_md]; index_tp++) {
-        free(sources_spline[index_md][index_ic * ppt->tp_size[index_md] + index_tp]);
+        class_free(sources_spline[index_md][index_ic * ppt->tp_size[index_md] + index_tp]);
       }
     }
-    free(sources_spline[index_md]);
+    class_free(sources_spline[index_md]);
   }
-  free(sources_spline);
+  class_free(sources_spline);
 
   return _SUCCESS_;
 }
@@ -1439,9 +1458,9 @@ int transfer_free_source_correspondence(
   int index_md;
 
   for (index_md = 0; index_md < ptr->md_size; index_md++) {
-    free(tp_of_tt[index_md]);
+    class_free(tp_of_tt[index_md]);
   }
-  free(tp_of_tt);
+  class_free(tp_of_tt);
 
   return _SUCCESS_;
 
@@ -2281,6 +2300,14 @@ int transfer_sources(
         /* loop over time and rescale */
         for (index_tau = 0; index_tau < tau_size; index_tau++) {
 
+	  //
+	  // KC 4/11/25
+	  // XXX
+	  // This \delta_m is sus, because \Omega_m does not project anymore.
+	  // See Eqns. (2.12), (2.13) op cit.
+	  //
+	  // 
+	  
           /* matter density source =  [- (dz/dtau) W(z)] * delta_m(k,tau)
              = W(tau) delta_m(k,tau)
              with
@@ -2774,7 +2801,7 @@ int transfer_source_resample(
   }
 
   /* deallocate the temporary array */
-  free(source_at_tau);
+  class_free(source_at_tau);
 
   return _SUCCESS_;
 
@@ -3340,7 +3367,7 @@ int transfer_integrate(
   }
 
 
-  free(radial_function);
+  class_free(radial_function);
   return _SUCCESS_;
 }
 
@@ -4043,11 +4070,11 @@ int transfer_radial_function(
     break;
   }
 
-  free(Phi);
-  free(dPhi);
-  free(d2Phi);
-  free(chireverse);
-  free(rescale_function);
+  class_free(Phi);
+  class_free(dPhi);
+  class_free(d2Phi);
+  class_free(chireverse);
+  class_free(rescale_function);
 
   return _SUCCESS_;
 }
@@ -4306,17 +4333,36 @@ int transfer_workspace_free(
                ptr->error_message,
                ptr->error_message);
   }
-  free(ptw->interpolated_sources);
-  free(ptw->sources);
-  free(ptw->tau0_minus_tau);
-  free(ptw->w_trapz);
-  free(ptw->chi);
-  free(ptw->cscKgen);
-  free(ptw->cotKgen);
+  class_free(ptw->interpolated_sources);
+  class_free(ptw->sources);
+  class_free(ptw->tau0_minus_tau);
+  class_free(ptw->w_trapz);
+  class_free(ptw->chi);
+  class_free(ptw->cscKgen);
+  class_free(ptw->cotKgen);
 
-  free(ptw);
+  class_free(ptw);
   return _SUCCESS_;
 }
+
+// KC 7/22/25
+// What is this weird stub?  Did I paste something janky?
+
+/* int transfer_update_HIS( */
+/*                         struct precision * ppr, */
+/*                         struct transfer * ptr, */
+/*                         struct transfer_workspace * ptw, */
+/*                         int index_q, */
+/*                         double tau0 */
+/*                         ) { */
+
+/*   double nu,new_nu; */
+/*   int int_nu; */
+/*   double xmin, xmax, sampling, phiminabs, xtol; */
+/*   double sqrt_absK; */
+/*   int l_size_max; */
+/*   int index_l_left,index_l_right; */
+/* } */
 
 int transfer_update_HIS(
                         struct precision * ppr,
@@ -4665,7 +4711,14 @@ int transfer_precompute_selection(
   class_alloc(tau0_minus_tau,tau_size_max*sizeof(double),ptr->error_message);
   class_alloc(selection,tau_size_max*sizeof(double),ptr->error_message);
   class_alloc(w_trapz,tau_size_max*sizeof(double),ptr->error_message);
-  class_alloc((*window),tau_size_max*ptr->tt_size[index_md]*sizeof(double),ptr->error_message);
+  //class_alloc((*window),tau_size_max*ptr->tt_size[index_md]*sizeof(double),ptr->error_message);
+
+  // KC 8/22/23
+  // See if the macro substitution was going wild...
+  (*window) = tracked_malloc(tau_size_max*ptr->tt_size[index_md]*sizeof(double));
+
+  // Did this fail?
+  printf("I asked for a window, what did we get? Address: %p\n", (*window));
   class_alloc(pvecback,pba->bg_size*sizeof(double),ptr->error_message);
 
   /* conformal time today */
@@ -5046,17 +5099,17 @@ int transfer_precompute_selection(
       }
 
       /* deallocate temporary arrays */
-      free(tau0_minus_tau_lensing_sources);
-      free(w_trapz_lensing_sources);
+      class_free(tau0_minus_tau_lensing_sources);
+      class_free(w_trapz_lensing_sources);
     }
     /* End integrated contribution */
   }
 
   /* deallocate temporary arrays */
-  free(selection);
-  free(tau0_minus_tau);
-  free(w_trapz);
-  free(pvecback);
+  class_free(selection);
+  class_free(tau0_minus_tau);
+  class_free(w_trapz);
+  class_free(pvecback);
   return _SUCCESS_;
 }
 

@@ -325,7 +325,7 @@ int perturbations_output_data_at_z(
         }
       }
     }
-    free(pvecsources);
+    class_free(pvecsources);
   }
 
   /** - store data */
@@ -337,7 +337,7 @@ int perturbations_output_data_at_z(
   /** - free tkfull */
   // condition necessary because the size could be zero (if ppt->tp_size is zero)
   if (tkfull != NULL)
-    free(tkfull);
+    class_free(tkfull);
 
   return _SUCCESS_;
 }
@@ -403,7 +403,7 @@ int perturbations_output_data_at_index_tau(
   /** - free tkfull */
   // condition necessary because the size could be zero (if ppt->tp_size is zero)
   if (tkfull != NULL)
-    free(tkfull);
+    class_free(tkfull);
 
   return _SUCCESS_;
 }
@@ -788,26 +788,33 @@ int perturbations_init(
 
   if (pba->has_fld == _TRUE_) {
 
-    /* check values of w_fld at initial time and today. Since 'a' in the code stands for 'a/a_0', its current value is 1 by definition */
-    class_call(background_w_fld(pba, 0., &w_fld_ini, &dw_over_da_fld, &integral_fld), pba->error_message, ppt->error_message);
-    class_call(background_w_fld(pba, 1.,   &w_fld_0, &dw_over_da_fld, &integral_fld), pba->error_message, ppt->error_message);
+    if(pba->fluid_equation_of_state != CCBH) {
+      /* check values of w_fld at initial time and today. Since 'a' in the code stands for 'a/a_0', its current value is 1 by definition */
+      class_call(background_w_fld(pba, 0., &w_fld_ini, &dw_over_da_fld, &integral_fld), pba->error_message, ppt->error_message);
+      class_call(background_w_fld(pba, 1.,   &w_fld_0, &dw_over_da_fld, &integral_fld), pba->error_message, ppt->error_message);
 
-    class_test(w_fld_ini >= 0.,
-               ppt->error_message,
-               "The fluid is meant to be negligible at early time, and unimportant for defining the initial conditions of other species. You are using parameters for which this assumption may break down, since at early times you have w_fld(a--->0) = %e >= 0",w_fld_ini);
+      class_test(w_fld_ini >= 0.,
+		 ppt->error_message,
+		 "The fluid is meant to be negligible at early time, and unimportant for defining the initial conditions of other species. You are using parameters for which this assumption may break down, since at early times you have w_fld(a--->0) = %e >= 0",w_fld_ini);
 
-    if (pba->use_ppf == _FALSE_) {
+      if (pba->use_ppf == _FALSE_) {
+	
+	class_test((w_fld_ini +1.0)*(w_fld_0+1.0) <= 0.0,
+		   ppt->error_message,
+		   "w crosses -1 between the infinite past and today, and this would lead to divergent perturbation equations for the fluid perturbations. Try to switch to PPF scheme: use_ppf = yes");
 
-      class_test((w_fld_ini +1.0)*(w_fld_0+1.0) <= 0.0,
-                 ppt->error_message,
-                 "w crosses -1 between the infinite past and today, and this would lead to divergent perturbation equations for the fluid perturbations. Try to switch to PPF scheme: use_ppf = yes");
-
-      /* the next check is meaningful at least for w(a) = w0 + wa*(1-a/a0); for general formulas and with use_ppf=no, you may prefer to comment it out... */
-      class_test((w_fld_0 == -1.) && (dw_over_da_fld == 0.),
-                 ppt->error_message,
-                 "Your choice of a fluid with (w0,wa)=(-1,0) is not valid due to instabilities in the unphysical perturbations of such a fluid. Try instead with a plain cosmological constant or with PPF scheme: use_ppf = yes");
-
+	/* the next check is meaningful at least for w(a) = w0 + wa*(1-a/a0); for general formulas and with use_ppf=no, you may prefer to comment it out... */
+	class_test((w_fld_0 == -1.) && (dw_over_da_fld == 0.),
+		   ppt->error_message,
+		   "Your choice of a fluid with (w0,wa)=(-1,0) is not valid due to instabilities in the unphysical perturbations of such a fluid. Try instead with a plain cosmological constant or with PPF scheme: use_ppf = yes");
+      }
     }
+    else {
+
+      // KC 4/11/25
+      // CCBH fluid doesn't exist initially, so these checks do not matter
+    }
+    
 
   }
 
@@ -1059,7 +1066,7 @@ int perturbations_init(
 
   } /* end loop over modes */
 
-  free(pppw);
+  class_free(pppw);
 
   /** - spline the source array with respect to the time variable */
 
@@ -1119,9 +1126,9 @@ int perturbations_init(
 int perturbations_free_input(struct perturbations* ppt) {
 
   if (ppt->alpha_idm_dr != NULL)
-    free(ppt->alpha_idm_dr);
+    class_free(ppt->alpha_idm_dr);
   if (ppt->beta_idr != NULL)
-    free(ppt->beta_idr);
+    class_free(ppt->beta_idr);
 
   return _SUCCESS_;
 }
@@ -1153,54 +1160,54 @@ int perturbations_free(
 
         for (index_tp = 0; index_tp < ppt->tp_size[index_md]; index_tp++) {
 
-          free(ppt->sources[index_md][index_ic*ppt->tp_size[index_md]+index_tp]);
+          class_free(ppt->sources[index_md][index_ic*ppt->tp_size[index_md]+index_tp]);
           if (ppt->ln_tau_size > 1)
-            free(ppt->ddlate_sources[index_md][index_ic*ppt->tp_size[index_md]+index_tp]);
+            class_free(ppt->ddlate_sources[index_md][index_ic*ppt->tp_size[index_md]+index_tp]);
 
         }
       }
 
-      free(ppt->sources[index_md]);
-      free(ppt->late_sources[index_md]);
-      free(ppt->ddlate_sources[index_md]);
+      class_free(ppt->sources[index_md]);
+      class_free(ppt->late_sources[index_md]);
+      class_free(ppt->ddlate_sources[index_md]);
 
-      free(ppt->k[index_md]);
+      class_free(ppt->k[index_md]);
 
     }
 
-    free(ppt->tau_sampling);
+    class_free(ppt->tau_sampling);
     if (ppt->ln_tau_size > 1)
-      free(ppt->ln_tau);
+      class_free(ppt->ln_tau);
 
-    free(ppt->tp_size);
+    class_free(ppt->tp_size);
 
-    free(ppt->ic_size);
+    class_free(ppt->ic_size);
 
-    free(ppt->k);
+    class_free(ppt->k);
 
-    free(ppt->k_size_cmb);
+    class_free(ppt->k_size_cmb);
 
-    free(ppt->k_size_cl);
+    class_free(ppt->k_size_cl);
 
-    free(ppt->k_size);
+    class_free(ppt->k_size);
 
-    free(ppt->sources);
-    free(ppt->late_sources);
-    free(ppt->ddlate_sources);
+    class_free(ppt->sources);
+    class_free(ppt->late_sources);
+    class_free(ppt->ddlate_sources);
 
     /** Stuff related to perturbations output: */
 
     /** - Free non-NULL pointers */
     if (ppt->k_output_values_num > 0 )
-      free(ppt->index_k_output_values);
+      class_free(ppt->index_k_output_values);
 
     for (filenum = 0; filenum<_MAX_NUMBER_OF_K_FILES_; filenum++){
       if (ppt->scalar_perturbations_data[filenum] != NULL)
-        free(ppt->scalar_perturbations_data[filenum]);
+        class_free(ppt->scalar_perturbations_data[filenum]);
       if (ppt->vector_perturbations_data[filenum] != NULL)
-        free(ppt->vector_perturbations_data[filenum]);
+        class_free(ppt->vector_perturbations_data[filenum]);
       if (ppt->tensor_perturbations_data[filenum] != NULL)
-        free(ppt->tensor_perturbations_data[filenum]);
+        class_free(ppt->tensor_perturbations_data[filenum]);
     }
 
   }
@@ -1622,15 +1629,20 @@ int perturbations_indices(
 
   }
 
-  /* Allocate the titles and data sections for the output file */
-  ppt->number_of_scalar_titles=0;
-  ppt->number_of_vector_titles=0;
-  ppt->number_of_tensor_titles=0;
-  for (filenum = 0; filenum<_MAX_NUMBER_OF_K_FILES_; filenum++){
-    ppt->scalar_perturbations_data[filenum] = NULL;
-    ppt->vector_perturbations_data[filenum] = NULL;
-    ppt->tensor_perturbations_data[filenum] = NULL;
-  }
+  // KC 8/29/23
+  // This was already done at the top of this function...
+  // Nothing here gets mutated above...
+  // So why are we doing this again?
+  
+  /* /\* Allocate the titles and data sections for the output file *\/ */
+  /* ppt->number_of_scalar_titles=0; */
+  /* ppt->number_of_vector_titles=0; */
+  /* ppt->number_of_tensor_titles=0; */
+  /* for (filenum = 0; filenum<_MAX_NUMBER_OF_K_FILES_; filenum++){ */
+  /*   ppt->scalar_perturbations_data[filenum] = NULL; */
+  /*   ppt->vector_perturbations_data[filenum] = NULL; */
+  /*   ppt->tensor_perturbations_data[filenum] = NULL; */
+  /* } */
 
   return _SUCCESS_;
 
@@ -2001,8 +2013,8 @@ int perturbations_timesampling_for_sources(
   /** - last sampling point = exactly today */
   ppt->tau_sampling[counter] = pba->conformal_age;
 
-  free(pvecback);
-  free(pvecthermo);
+  class_free(pvecback);
+  class_free(pvecthermo);
 
   /** - check the maximum redshift z_max_pk at which the Fourier
       transfer functions \f$ T_i(k,z)\f$ should be computable by
@@ -2301,6 +2313,9 @@ int perturbations_get_k_list(
          stepsize is still fixed by k_step_super, this is just a
          reduction factor. */
 
+      // KC 6/20/24
+      // This should be okay, because larger H0 only shrinks the step, so accuracy
+      // will improve
       scale2 = pow(pba->H0,2)+fabs(pba->K);
 
       step *= (k*k/scale2+1.)/(k*k/scale2+1./ppr->k_step_super_reduction);
@@ -2473,6 +2488,11 @@ int perturbations_get_k_list(
          stepsize is still fixed by k_step_super, this is just a
          reduction factor. */
 
+      // KC 6/20/24
+      // XXX(?, unlikely)
+      // This one is probably okay, as it sets the step size.  Baryon consumption
+      // will increase H0, so the scale increases, so the step decreases.
+      
       scale2 = pow(pba->H0,2)+fabs(pba->K);
 
       step *= (k*k/scale2+1.)/(k*k/scale2+1./ppr->k_step_super_reduction);
@@ -2607,6 +2627,9 @@ int perturbations_get_k_list(
          stepsize is still fixed by k_step_super, this is just a
          reduction factor. */
 
+      // KC 6/20/24
+      // Probably only because we're dividing by the scale, H0 goes up with
+      // baryon depletion, so this will only get more precise
       scale2 = pow(pba->H0,2)+fabs(pba->K);
 
       step *= (k*k/scale2+1.)/(k*k/scale2+1./ppr->k_step_super_reduction);
@@ -2680,7 +2703,7 @@ int perturbations_get_k_list(
         }
       }
 
-      free(ppt->k[index_mode]);
+      class_free(ppt->k[index_mode]);
       ppt->k[index_mode] = tmp_k_list;
       ppt->k_size[index_mode] = newk_size;
 
@@ -2729,8 +2752,8 @@ int perturbations_get_k_list(
     ppt->k_max = MAX(ppt->k_max,ppt->k[ppt->index_md_tensors][ppt->k_size[ppt->index_md_tensors]-1]); /* last value, inferred from perturbations structure */
   }
 
-  free(k_max_cmb);
-  free(k_max_cl);
+  class_free(k_max_cmb);
+  class_free(k_max_cl);
 
   return _SUCCESS_;
 
@@ -2937,23 +2960,23 @@ int perturbations_workspace_free (
                                   struct perturbations_workspace * ppw
                                   ) {
 
-  free(ppw->s_l);
-  free(ppw->pvecback);
-  free(ppw->pvecthermo);
-  free(ppw->pvecmetric);
+  class_free(ppw->s_l);
+  class_free(ppw->pvecback);
+  class_free(ppw->pvecthermo);
+  class_free(ppw->pvecmetric);
   if (ppw->ap_size > 0)
-    free(ppw->approx);
+    class_free(ppw->approx);
 
   if (_scalars_) {
 
     if ((ppt->has_density_transfers == _TRUE_) || (ppt->has_velocity_transfers == _TRUE_) || (ppt->has_source_delta_m == _TRUE_)) {
-      free(ppw->delta_ncdm);
-      free(ppw->theta_ncdm);
-      free(ppw->shear_ncdm);
+      class_free(ppw->delta_ncdm);
+      class_free(ppw->theta_ncdm);
+      class_free(ppw->shear_ncdm);
     }
   }
 
-  free(ppw);
+  class_free(ppw);
 
   return _SUCCESS_;
 }
@@ -3104,6 +3127,13 @@ int perturbations_solve(
   /* check that this initial time is indeed OK given imposed
      conditions on kappa' and on k/aH */
 
+  /* fprintf(stderr, */
+  /* 	  "DEBUG: %e vs %e\n", */
+  /* 	  ppw->pvecback[pba->index_bg_a]* */
+  /* 	  ppw->pvecback[pba->index_bg_H]/ */
+  /* 	  ppw->pvecthermo[pth->index_th_dkappa], */
+  /* 	  ppr->start_small_k_at_tau_c_over_tau_h); */
+	  
   class_test(ppw->pvecback[pba->index_bg_a]*
              ppw->pvecback[pba->index_bg_H]/
              ppw->pvecthermo[pth->index_th_dkappa] >
@@ -3194,7 +3224,7 @@ int perturbations_solve(
   /** - find the number of intervals over which approximation scheme is constant */
 
   class_alloc(interval_number_of,ppw->ap_size*sizeof(int),ppt->error_message);
-
+    
   ppw->inter_mode = inter_normal;
 
   class_call(perturbations_find_approximation_number(ppr,
@@ -3235,7 +3265,7 @@ int perturbations_solve(
              ppt->error_message,
              ppt->error_message);
 
-  free(interval_number_of);
+  class_free(interval_number_of);
 
   /** - fill the structure containing all fixed parameters, indices
       and workspaces needed by perturbations_derivs */
@@ -3359,11 +3389,11 @@ int perturbations_solve(
              ppt->error_message);
 
   for (index_interval=0; index_interval<interval_number; index_interval++)
-    free(interval_approx[index_interval]);
+    class_free(interval_approx[index_interval]);
 
-  free(interval_approx);
+  class_free(interval_approx);
 
-  free(interval_limit);
+  class_free(interval_limit);
 
   return _SUCCESS_;
 }
@@ -3845,7 +3875,7 @@ int perturbations_find_approximation_switches(
       }
     }
 
-    free(unsorted_tau_switch);
+    class_free(unsorted_tau_switch);
 
     class_call(perturbations_approximations(ppr,
                                             pba,
@@ -5328,12 +5358,12 @@ int perturbations_vector_free(
                               struct perturbations_vector * pv
                               ) {
 
-  if (pv->l_max_ncdm != NULL) free(pv->l_max_ncdm);
-  if (pv->q_size_ncdm != NULL) free(pv->q_size_ncdm);
-  free(pv->y);
-  free(pv->dy);
-  free(pv->used_in_sources);
-  free(pv);
+  if (pv->l_max_ncdm != NULL) class_free(pv->l_max_ncdm);
+  if (pv->q_size_ncdm != NULL) class_free(pv->q_size_ncdm);
+  class_free(pv->y);
+  class_free(pv->dy);
+  class_free(pv->used_in_sources);
+  class_free(pv);
 
   return _SUCCESS_;
 }
@@ -5482,6 +5512,14 @@ int perturbations_initial_conditions(struct precision * ppr,
        the universe is
        a = [H(t_0)^2 Omega_m(t_0) a(t_0)^3 / 4] x [tau^2 + 4 tau / omega]
     */
+
+    // KC 4/11/25
+    // XXX
+    // This looks sus af
+    class_test(a > 1./25,
+	       ppt->error_message,
+	       "CCBH: initial conditions is getting called when om is broken\n");
+    
     om = a*rho_m/sqrt(rho_r);
 
     /* (k tau)^2, (k tau)^3 */
@@ -5551,9 +5589,15 @@ int perturbations_initial_conditions(struct precision * ppr,
         class_call(background_w_fld(pba,a,&w_fld,&dw_over_da_fld,&integral_fld), pba->error_message, ppt->error_message);
 
         if (pba->use_ppf == _FALSE_) {
-          ppw->pv->y[ppw->pv->index_pt_delta_fld] = - ktau_two/4.*(1.+w_fld)*(4.-3.*pba->cs2_fld)/(4.-6.*w_fld+3.*pba->cs2_fld) * ppr->curvature_ini * s2_squared; /* from 1004.5509 */ //TBC: curvature
 
-          ppw->pv->y[ppw->pv->index_pt_theta_fld] = - k*ktau_three/4.*pba->cs2_fld/(4.-6.*w_fld+3.*pba->cs2_fld) * ppr->curvature_ini * s2_squared; /* from 1004.5509 */ //TBC:curvature
+	  if(pba->fluid_equation_of_state == CCBH) {
+	    ppw->pv->y[ppw->pv->index_pt_delta_fld] = 0.;
+	    ppw->pv->y[ppw->pv->index_pt_theta_fld] = 0.;
+	  }
+	  else { 
+	    ppw->pv->y[ppw->pv->index_pt_delta_fld] = - ktau_two/4.*(1.+w_fld)*(4.-3.*pba->cs2_fld)/(4.-6.*w_fld+3.*pba->cs2_fld) * ppr->curvature_ini * s2_squared; /* from 1004.5509 */ //TBC: curvature
+	    ppw->pv->y[ppw->pv->index_pt_theta_fld] = - k*ktau_three/4.*pba->cs2_fld/(4.-6.*w_fld+3.*pba->cs2_fld) * ppr->curvature_ini * s2_squared; /* from 1004.5509 */ //TBC:curvature
+	  }
         }
         /* if use_ppf == _TRUE_, y[ppw->pv->index_pt_Gamma_fld] will be automatically set to zero, and this is what we want (although one could probably work out some small nonzero initial conditions: TODO) */
       }
@@ -5830,10 +5874,18 @@ int perturbations_initial_conditions(struct precision * ppr,
       /* fluid */
       if ((pba->has_fld == _TRUE_) && (pba->use_ppf == _FALSE_)) {
 
-        class_call(background_w_fld(pba,a,&w_fld,&dw_over_da_fld,&integral_fld), pba->error_message, ppt->error_message);
+	if(pba->fluid_equation_of_state != CCBH) {
+	  
+	  class_call(background_w_fld(pba,a,&w_fld,&dw_over_da_fld,&integral_fld), pba->error_message, ppt->error_message);
 
-        ppw->pv->y[ppw->pv->index_pt_delta_fld] -= 3*(1.+w_fld)*a_prime_over_a*alpha;
-        ppw->pv->y[ppw->pv->index_pt_theta_fld] += k*k*alpha;
+	  ppw->pv->y[ppw->pv->index_pt_delta_fld] -= 3*(1.+w_fld)*a_prime_over_a*alpha;
+	  ppw->pv->y[ppw->pv->index_pt_theta_fld] += k*k*alpha;
+	}
+	else {
+
+	  // KC 4/11/25
+	  // No CCBH fluid initially, so no gauge corrections (nothing exists yet to correct)
+	}
       }
 
       /* scalar field: check */
@@ -5916,6 +5968,9 @@ int perturbations_initial_conditions(struct precision * ppr,
 
     if (pba->has_dr == _TRUE_) {
 
+      // KC 6/20/24
+      // XXX - dark radiation has not been ported yet, but this code will
+      // never run because it will die in background module
       f_dr = pow(pow(a,2)/pba->H0,2)*ppw->pvecback[pba->index_bg_rho_dr];
 
       ppw->pv->y[ppw->pv->index_pt_F0_dr] = delta_dr*f_dr;
@@ -6697,37 +6752,49 @@ int perturbations_einstein(
 
     }
 
-    /* transform (delta_m, theta_m) of the current gauge into
-       gauge-independent variables (you could comment this out if you
-       really want gauge-dependent results) */
+    //
+    // KC 4/11/25
+    // Apparently, we can just gauge fix delta_m and be done with it.
+    // (see earlier comments about delta_m
+    //
+    
+    /* /\* transform (delta_m, theta_m) of the current gauge into */
+    /*    gauge-independent variables (you could comment this out if you */
+    /*    really want gauge-dependent results) *\/ */
 
-    if (ppt->has_source_delta_m == _TRUE_) {
-      ppw->delta_m += 3. *ppw->pvecback[pba->index_bg_a]*ppw->pvecback[pba->index_bg_H] * ppw->theta_m/k2;
-      // note: until 2.4.3 there was a typo, the factor was (-2 H'/H) instead
-      // of (3 aH). There is the same typo in the CLASSgal paper
-      // 1307.1459v1,v2,v3. It came from a confusion between (1+w_total)
-      // and (1+w_matter)=1 [the latter is the relevant one here].
-      //
-      // note2: at this point this gauge-invariant variable is only
-      // valid if all matter components are pressureless and
-      // stable. This relation will be generalized soon to the case
-      // of decaying dark matter.
-    }
+    /* // */
+    /* // KC 4/11/25 */
+    /* // XXX */
+    /* // Yeah \delta_m is big sus, probably missing the impact */
+    /* // of the background baryon depletion in gauge */
+    /* // */
+    /* if (ppt->has_source_delta_m == _TRUE_) { */
+    /*   ppw->delta_m += 3. *ppw->pvecback[pba->index_bg_a]*ppw->pvecback[pba->index_bg_H] * ppw->theta_m/k2; */
+    /*   // note: until 2.4.3 there was a typo, the factor was (-2 H'/H) instead */
+    /*   // of (3 aH). There is the same typo in the CLASSgal paper */
+    /*   // 1307.1459v1,v2,v3. It came from a confusion between (1+w_total) */
+    /*   // and (1+w_matter)=1 [the latter is the relevant one here]. */
+    /*   // */
+    /*   // note2: at this point this gauge-invariant variable is only */
+    /*   // valid if all matter components are pressureless and */
+    /*   // stable. This relation will be generalized soon to the case */
+    /*   // of decaying dark matter. */
+    /* } */
 
-    if (ppt->has_source_delta_cb == _TRUE_) {
-      ppw->delta_cb += 3. *ppw->pvecback[pba->index_bg_a]*ppw->pvecback[pba->index_bg_H] * ppw->theta_cb/k2;//check gauge transformation
-    }
+    /* if (ppt->has_source_delta_cb == _TRUE_) { */
+    /*   ppw->delta_cb += 3. *ppw->pvecback[pba->index_bg_a]*ppw->pvecback[pba->index_bg_H] * ppw->theta_cb/k2;//check gauge transformation */
+    /* } */
 
-    if (ppt->has_source_theta_m == _TRUE_) {
-      if  (ppt->gauge == synchronous) {
-        ppw->theta_m += ppw->pvecmetric[ppw->index_mt_alpha]*k2;
-      }
-    }
-    if (ppt->has_source_theta_cb == _TRUE_){
-      if  (ppt->gauge == synchronous) {
-        ppw->theta_cb += ppw->pvecmetric[ppw->index_mt_alpha]*k2; //check gauge transformation
-      }
-    }
+    /* if (ppt->has_source_theta_m == _TRUE_) { */
+    /*   if  (ppt->gauge == synchronous) { */
+    /*     ppw->theta_m += ppw->pvecmetric[ppw->index_mt_alpha]*k2; */
+    /*   } */
+    /* } */
+    /* if (ppt->has_source_theta_cb == _TRUE_){ */
+    /*   if  (ppt->gauge == synchronous) { */
+    /*     ppw->theta_cb += ppw->pvecmetric[ppw->index_mt_alpha]*k2; //check gauge transformation */
+    /*   } */
+    /* } */
   }
   /** - for vector modes */
 
@@ -7024,6 +7091,9 @@ int perturbations_total_stress_energy(
          f = rho_dr*a^4/rho_crit_today. In CLASS density units
          rho_crit_today = H0^2.
       */
+
+      // KC 6/20/24
+      // This code will die in the background module (dark radiation not implemented yet)
       rho_dr_over_f = pow(pba->H0/a2,2);
       ppw->delta_rho += rho_dr_over_f*y[ppw->pv->index_pt_F0_dr];
       ppw->rho_plus_p_theta += 4./3.*3./4*k*rho_dr_over_f*y[ppw->pv->index_pt_F0_dr+1];
@@ -7205,6 +7275,11 @@ int perturbations_total_stress_energy(
         ppw->rho_plus_p_theta_fld = (1.+w_fld)*ppw->pvecback[pba->index_bg_rho_fld]*y[ppw->pv->index_pt_theta_fld];
         ca2_fld = w_fld - w_prime_fld / 3. / (1.+w_fld) / a_prime_over_a;
         /** We must gauge transform the pressure perturbation from the fluid rest-frame to the gauge we are working in */
+
+	// KC 4/11/25
+	// XXX
+	// This needs to be adjusted for CCBH energy injection
+	// Currently it should be correctly pinned to zero...
         ppw->delta_p_fld = pba->cs2_fld * ppw->delta_rho_fld + (pba->cs2_fld-ca2_fld)*(3*a_prime_over_a*ppw->rho_plus_p_theta_fld/k/k);
       }
       else {
@@ -7292,6 +7367,14 @@ int perturbations_total_stress_energy(
        will be transformed later on into the gauge-independent variable D
        = delta_m + 3 a H \theta_m/k^2 .  */
 
+    //
+    // KC 4/11/25
+    // XXX
+    // Computation of this thing looks okay, like its going to
+    // evolve correctly.  The gauge invariant thing breaks
+    // when you have baryon depletion...
+    // So we've gauge fixed for now.
+    //
     if (ppt->has_source_delta_m == _TRUE_)
       ppw->delta_m = delta_rho_m/rho_m;
 
@@ -7622,6 +7705,9 @@ int perturbations_sources(
 
         }
         else {
+	  // KC 4/11/25
+	  // Eventually XXX
+	  // This needs to be adjutsed for anisotropic stresses on the ISW term
           _set_source_(ppt->index_tp_t0) =
             ppt->switch_sw * g * (delta_g / 4. + pvecmetric[ppw->index_mt_psi])
             + switch_isw * ( g * (y[ppw->pv->index_pt_phi]-pvecmetric[ppw->index_mt_psi])
@@ -7807,6 +7893,11 @@ int perturbations_sources(
     }
 
     /* total matter overdensity (gauge-invariant, defined as in arXiv:1307.1459) */
+    //
+    // KC 4/11/25
+    // XXX
+    // Not gauge invariant anymore!
+    //
     if (ppt->has_source_delta_m == _TRUE_) {
       _set_source_(ppt->index_tp_delta_m) = ppw->delta_m;
     }
@@ -7897,6 +7988,10 @@ int perturbations_sources(
     }
 
     /* delta_dr */
+    // KC 6/20/24
+    // XXX
+    // This needs to be ported, but will never run because dr dies
+    // at the background model for now
     if (ppt->has_source_delta_dr == _TRUE_) {
       f_dr = pow(a2/pba->H0,2)*pvecback[pba->index_bg_rho_dr];
       _set_source_(ppt->index_tp_delta_dr) = y[ppw->pv->index_pt_F0_dr]/f_dr
@@ -8010,6 +8105,10 @@ int perturbations_sources(
     /* theta_dr */
     if (ppt->has_source_theta_dr == _TRUE_) {
 
+      // KC 6/20/24
+      // XXX
+      // This needs to be ported, but will never run because dr dies
+      // at the background model for now
       f_dr = pow(a2/pba->H0,2)*pvecback[pba->index_bg_rho_dr];
 
       _set_source_(ppt->index_tp_theta_dr) = 3./4.*k*y[ppw->pv->index_pt_F0_dr+1]/f_dr
@@ -8290,7 +8389,7 @@ int perturbations_print_variables(double tau,
         theta_idr = y[ppw->pv->index_pt_theta_idr];
 
         if (ppt->idr_nature == idr_free_streaming){
-          if ((ppw->approx[ppw->index_ap_tca_idm_dr] == (int)tca_idm_dr_on)){
+          if ( ppw->approx[ppw->index_ap_tca_idm_dr] == (int)tca_idm_dr_on ){
             shear_idr = ppw->tca_shear_idm_dr;
           }
           else{
@@ -8407,6 +8506,10 @@ int perturbations_print_variables(double tau,
 
 
     if (pba->has_dr == _TRUE_) {
+      // KC 6/20/24
+      // XXX
+      // This needs to be ported, but will never run because dr dies
+      // at the background model for now
       f_dr = pow(pvecback[pba->index_bg_a]*pvecback[pba->index_bg_a]/pba->H0,2)*pvecback[pba->index_bg_rho_dr];
       delta_dr = y[ppw->pv->index_pt_F0_dr]/f_dr;
       theta_dr = y[ppw->pv->index_pt_F0_dr+1]*3./4.*k/f_dr;
@@ -8499,8 +8602,8 @@ int perturbations_print_variables(double tau,
     }
     else{
       ppt->scalar_perturbations_data[ppw->index_ikout] =
-        realloc(ppt->scalar_perturbations_data[ppw->index_ikout],
-                sizeof(double)*(ppt->size_scalar_perturbation_data[ppw->index_ikout]+ppt->number_of_scalar_titles));
+        tracked_realloc(ppt->scalar_perturbations_data[ppw->index_ikout],
+			sizeof(double)*(ppt->size_scalar_perturbation_data[ppw->index_ikout]+ppt->number_of_scalar_titles));
     }
     storeidx = 0;
     dataptr = ppt->scalar_perturbations_data[ppw->index_ikout]+
@@ -8609,8 +8712,8 @@ int perturbations_print_variables(double tau,
     }
     else{
       ppt->tensor_perturbations_data[ppw->index_ikout] =
-        realloc(ppt->tensor_perturbations_data[ppw->index_ikout],
-                sizeof(double)*(ppt->size_tensor_perturbation_data[ppw->index_ikout]+ppt->number_of_tensor_titles));
+        tracked_realloc(ppt->tensor_perturbations_data[ppw->index_ikout],
+			sizeof(double)*(ppt->size_tensor_perturbation_data[ppw->index_ikout]+ppt->number_of_tensor_titles));
     }
     storeidx = 0;
     dataptr = ppt->tensor_perturbations_data[ppw->index_ikout]+
@@ -8684,10 +8787,10 @@ int perturbations_print_variables(double tau,
   }
 
   if (pba->has_ncdm == _TRUE_){
-    free(delta_ncdm);
-    free(theta_ncdm);
-    free(shear_ncdm);
-    free(delta_p_over_delta_rho_ncdm);
+    class_free(delta_ncdm);
+    class_free(theta_ncdm);
+    class_free(shear_ncdm);
+    class_free(delta_p_over_delta_rho_ncdm);
   }
 
   return _SUCCESS_;
@@ -8864,7 +8967,10 @@ int perturbations_derivs(double tau,
       photon_scattering_rate += pvecthermo[pth->index_th_dmu_idm_g];
       S_idm_g = 4./3. * pvecback[pba->index_bg_rho_g] / pvecback[pba->index_bg_rho_idm];
     }
-    if ((pth->has_idm_dr == _TRUE_)){
+    if ( pth->has_idm_dr == _TRUE_ ){
+
+      // KC 6/20/24
+      // PORT REQUIRED
       S_idm_dr = 4./3. * pvecback[pba->index_bg_rho_idr]/ pvecback[pba->index_bg_rho_idm];
       dmu_idm_dr = pvecthermo[pth->index_th_dmu_idm_dr];
       dmu_idr = pth->b_idr/pth->a_idm_dr*pba->Omega0_idr/pba->Omega0_idm*dmu_idm_dr;
@@ -8929,14 +9035,25 @@ int perturbations_derivs(double tau,
       delta_chi= y[ppw->pv->index_pt_perturbed_recombination_delta_chi];
       chi=pvecthermo[pth->index_th_xe];
 
+      // KC 6/20/24
+      // XXX
+      // This is thermodynamics code sitting in perturbations >_<
+      //
+      // Needs to be adjusted.
+      //
       // Conversion of H0 in inverse seconds (pba->H0 is [H0/c] in inverse Mpcs)
-      H0 = pba->H0 * _c_ / _Mpc_over_m_;
+      // H0 = pba->H0 * _c_ / _Mpc_over_m_;
 
-      //Computation of Nnow in SI units
-      Nnow = 3.*H0*H0*pba->Omega0_b*(1.-pth->YHe)/(8.*_PI_*_G_*_m_H_);
+      // Computation of Nnow in SI units
+      // Nnow = 3.*H0*H0*pba->Omega0_b*(1.-pth->YHe)/(8.*_PI_*_G_*_m_H_);
 
       // total amount of hydrogen today
-      n_H = Nnow/pow(a,3);
+      // n_H = Nnow/pow(a,3);
+      // ... except that's not today, thats at a assuming projection is valid...
+      // Nnow only used in one spot...
+      
+      // This is the correct expression
+      n_H = pvecback[pba->index_bg_rho_b] * _Jm3_over_Mpc2_ / (_m_H_ * _c_ * _c_) * (1. - pth->YHe);
 
       // Helium-to-hydrogen ratio
       fHe = pth->YHe / (_not4_*(1-pth->YHe));
@@ -8950,6 +9067,11 @@ int perturbations_derivs(double tau,
       // Temperature is already in Kelvin
       Tb_in_K = pvecthermo[pth->index_th_Tb];
 
+      //
+      // KC 6/20/24
+      // YOOOOO magic number festival.....
+      //
+      
       // Alpha in m^3/s, cf. Recfast paper
       alpha_rec = 1.14 * 4.309e-19*pow((Tb_in_K * 1e-4),-0.6166)/(1+0.6703*pow((Tb_in_K * 1e-4),0.53)) ;
 
@@ -9320,6 +9442,9 @@ int perturbations_derivs(double tau,
          rho_crit_today = H0^2.
       */
 
+      // KC 6/20/24
+      // XXX
+      // Needs to be ported for dark radiation
       f_dr = pow(pow(a,2)/pba->H0,2)*pvecback[pba->index_bg_rho_dr];
       fprime_dr = pba->Gamma_dcdm*pvecback[pba->index_bg_rho_dcdm]*pow(a,5)/pow(pba->H0,2);
 
@@ -9358,28 +9483,37 @@ int perturbations_derivs(double tau,
 
       if (pba->use_ppf == _FALSE_){
 
-        /** - ----> factors w, w_prime, adiabatic sound speed ca2 (all three background-related),
-            plus actual sound speed in the fluid rest frame cs2 */
+	if(pba->fluid_equation_of_state == CCBH) {
 
-        class_call(background_w_fld(pba,a,&w_fld,&dw_over_da_fld,&integral_fld), pba->error_message, ppt->error_message);
-        w_prime_fld = dw_over_da_fld * a_prime_over_a * a;
+	  // KC 4/11/25
+	  // Pin it at zero for now.
+	  dy[pv->index_pt_delta_fld] = 0.;
+	  dy[pv->index_pt_theta_fld] = 0.;
+	}
+	else {
+	  /** - ----> factors w, w_prime, adiabatic sound speed ca2 (all three background-related),
+	      plus actual sound speed in the fluid rest frame cs2 */
 
-        ca2 = w_fld - w_prime_fld / 3. / (1.+w_fld) / a_prime_over_a;
-        cs2 = pba->cs2_fld;
+	  class_call(background_w_fld(pba,a,&w_fld,&dw_over_da_fld,&integral_fld), pba->error_message, ppt->error_message);
+	  w_prime_fld = dw_over_da_fld * a_prime_over_a * a;
+	  
+	  ca2 = w_fld - w_prime_fld / 3. / (1.+w_fld) / a_prime_over_a;
+	  cs2 = pba->cs2_fld;
+	  
+	  /** - ----> fluid density */
+	  
+	  dy[pv->index_pt_delta_fld] =
+	    -(1+w_fld)*(y[pv->index_pt_theta_fld]+metric_continuity)
+	    -3.*(cs2-w_fld)*a_prime_over_a*y[pv->index_pt_delta_fld]
+	    -9.*(1+w_fld)*(cs2-ca2)*a_prime_over_a*a_prime_over_a*y[pv->index_pt_theta_fld]/k2;
 
-        /** - ----> fluid density */
-
-        dy[pv->index_pt_delta_fld] =
-          -(1+w_fld)*(y[pv->index_pt_theta_fld]+metric_continuity)
-          -3.*(cs2-w_fld)*a_prime_over_a*y[pv->index_pt_delta_fld]
-          -9.*(1+w_fld)*(cs2-ca2)*a_prime_over_a*a_prime_over_a*y[pv->index_pt_theta_fld]/k2;
-
-        /** - ----> fluid velocity */
-
-        dy[pv->index_pt_theta_fld] = /* fluid velocity */
-          -(1.-3.*cs2)*a_prime_over_a*y[pv->index_pt_theta_fld]
-          +cs2*k2/(1.+w_fld)*y[pv->index_pt_delta_fld]
-          +metric_euler;
+	  /** - ----> fluid velocity */
+	  
+	  dy[pv->index_pt_theta_fld] = /* fluid velocity */
+	    -(1.-3.*cs2)*a_prime_over_a*y[pv->index_pt_theta_fld]
+	    +cs2*k2/(1.+w_fld)*y[pv->index_pt_delta_fld]
+	    +metric_euler;
+	}
       }
       else {
         dy[pv->index_pt_Gamma_fld] = ppw->Gamma_prime_fld; /* Gamma variable of PPF formalism */

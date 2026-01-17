@@ -4,6 +4,7 @@
 #define __BACKGROUND__
 
 #include "common.h"
+#include "ccbh.h"
 #include "quadrature.h"
 #include "growTable.h"
 #include "arrays.h"
@@ -16,7 +17,7 @@ enum spatial_curvature {flat,open,closed};
 
 /** list of possible parametrisations of the DE equation of state */
 
-enum equation_of_state {CLP,EDE};
+enum equation_of_state {CLP,EDE,CCBH};
 
 
 /** list of possible parametrizations of the varying fundamental constants */
@@ -63,13 +64,18 @@ struct background
   double h;  /**< reduced Hubble parameter */
 
   double Omega0_g; /**< \f$ \Omega_{0 \gamma} \f$: photons */
+  double omega0_g; /**< \f$ \omega_{0 \gamma} \f$: projected physical photon density */
+  
   double T_cmb;    /**< \f$ T_{cmb} \f$: current CMB temperature in Kelvins */
 
   double Omega0_b; /**< \f$ \Omega_{0 b} \f$: baryons */
-
+  double omega0_b; /**< \f$ \omega_{0 b} \f$: projected physical baryon density */
+  
   double Omega0_ur; /**< \f$ \Omega_{0 \nu r} \f$: ultra-relativistic neutrinos */
-
+  double omega0_ur; /**< \f$ \omega_{0 \nu r} \f$: projected ultra-relativistic neutrino physical density */
+  
   double Omega0_cdm;      /**< \f$ \Omega_{0 cdm} \f$: cold dark matter */
+  double omega0_cdm;      /**< \f$ \omega_{0 cdm} \f$: projected CDM physical density */
 
   double Omega0_idm; /**< \f$ \Omega_{0 idm} \f$: interacting dark matter with photons, baryons, and idr */
 
@@ -90,8 +96,9 @@ struct background
   double * ncdm_psd_parameters;          /**< list of parameters for specifying/modifying ncdm p.s.d.'s, to be customized for given model
                                             (could be e.g. mixing angles) */
   double * M_ncdm;                       /**< vector of masses of non-cold relic: dimensionless ratios m_ncdm/T_ncdm */
+  // double * omega0_ncdm;                  /**< vector of projectable non-cold relic physical densities. */
   double * m_ncdm_in_eV;                 /**< list of ncdm masses in eV (inferred from M_ncdm and other parameters above) */
-  double * Omega0_ncdm, Omega0_ncdm_tot; /**< Omega0_ncdm for each species and for the total Omega0_ncdm */
+  double * Omega0_ncdm, Omega0_ncdm_tot, omega0_ncdm_tot; /**< Omega0_ncdm for each species and for the total Omega0_ncdm */
   double * T_ncdm,T_ncdm_default;        /**< list of 1st parameters in p-s-d of non-cold relics: relative temperature
                                             T_ncdm1/T_gamma; and its default value */
   double * ksi_ncdm, ksi_ncdm_default;   /**< list of 2nd parameters in p-s-d of non-cold relics: relative chemical potential
@@ -103,9 +110,14 @@ struct background
   double * ncdm_qmax;      /**< Vector of maximum value of q */
 
   double Omega0_k;         /**< \f$ \Omega_{0_k} \f$: curvature contribution */
-
+  double K;                /**< \f$ \omega_{0_k} \f$: curbature contribution, but in little omega */
+  
   double Omega0_lambda;    /**< \f$ \Omega_{0_\Lambda} \f$: cosmological constant */
+  double omega0_lambda;    /**< \f$ \omega_{0_\Lambda} \f$: cosmological constant, or equivalently a DE floor */
+  
   double Omega0_fld;       /**< \f$ \Omega_{0 de} \f$: fluid */
+  double omega0_fld;       /** <\f$ \omega_{0 fld} \f$: projected physical density of phenomenological fluid */
+  
   double Omega0_scf;       /**< \f$ \Omega_{0 scf} \f$: scalar field */
   short use_ppf; /**< flag switching on PPF perturbation equations instead of true fluid equations for perturbations. It could have been defined inside
                     perturbation structure, but we leave it here in such way to have all fld parameters grouped. */
@@ -115,6 +127,21 @@ struct background
   double wa_fld;   /**< \f$ wa_{DE} \f$: fluid equation of state parameter derivative */
   double cs2_fld;  /**< \f$ c^2_{s~DE} \f$: sound speed of the fluid in the frame comoving with the fluid (so, this is
                       not [delta p/delta rho] in the synchronous or newtonian gauge!) */
+  enum ccbh_background_model ccbh_background;  /**< which background model to use for ccbh */
+
+  char * ccbh_external_sfrd_file; /**< A command for loading an externally tabulated SFRD.  Format: loga Msol/Mpc^3 */
+  int ccbh_external_sfrd_size; /**< The number of entries in the external SFRD table */
+  double * ccbh_external_sfrd_loga; /**< The samples, in log a, that give the domain of the external SFRD */
+  double * ccbh_external_sfrd_values; /**< The values, in Msol/Mpc^3 comoving, of the SFRD at the log a samples above */
+  
+  double h_sfrd;   /**< \f$ h_{SFRD} \f$: little h for the fiducial cosmology used to report the comoving SFRD */
+  double Omega0_m_sfrd; /**< \f$ \Omega_{0 m} \f$: Matter density parameter for the LCDM cosmology used to report the the comoving SFRD */
+
+  double k_CCBH;     /**< \f$ k \f$: Coupling strength of the CCBH fluid, i.e. masses grow \propto a^k */
+  double Xi_CCBH;    /**< \f$ \Xi \f$: SFRD multiplier giving baryons consumed during CCBH formation (constant in the simplest model) */
+  double slip_CCBH; /**< \f$ slip \f$: Multiplier for amount of comoving DE mass produced per unit baryonic mass (constant) */
+  double ztrans_Xi_CCBH; /**< \f$ z_{\rm trans} \f$: A transition redshift for pivoting BH production modulation */
+  
   double Omega_EDE;        /**< \f$ wa_{DE} \f$: Early Dark Energy density parameter */
   double * scf_parameters; /**< list of parameters describing the scalar field potential */
   short attractor_ic_scf;  /**< whether the scalar field has attractor initial conditions */
@@ -136,7 +163,7 @@ struct background
 
   double age; /**< age in Gyears */
   double conformal_age; /**< conformal age in Mpc */
-  double K; /**< \f$ K \f$: Curvature parameter \f$ K=-\Omega0_k*a_{today}^2*H_0^2\f$; */
+  // double K; /**< \f$ K \f$: Curvature parameter \f$ K=-\Omega0_k*a_{today}^2*H_0^2\f$; */
   int sgnK; /**< K/|K|: -1, 0 or 1 */
   double Neff; /**< so-called "effective neutrino number", computed at earliest time in interpolation table */
   double Omega0_dcdm; /**< \f$ \Omega_{0 dcdm} \f$: decaying cold dark matter */
@@ -144,7 +171,10 @@ struct background
   double Omega0_m;  /**< total non-relativistic matter today */
   double Omega0_r;  /**< total ultra-relativistic radiation today */
   double Omega0_de; /**< total dark energy density today, currently defined as 1 - Omega0_m - Omega0_r - Omega0_k */
+
   double Omega0_nfsm; /**< total non-free-streaming matter, that is, cdm, baryons and wdm */
+  double omega0_nfsm; /**< total projected density of non-free-streaming matter */
+  
   double a_eq;      /**< scale factor at radiation/matter equality */
   double H_eq;      /**< Hubble rate at radiation/matter equality [Mpc^-1] */
   double z_eq;      /**< redshift at radiation/matter equality */
@@ -172,6 +202,9 @@ struct background
   int index_bg_rho_lambda;    /**< cosmological constant density */
   int index_bg_rho_fld;       /**< fluid density */
   int index_bg_w_fld;         /**< fluid equation of state */
+
+  int index_bg_rho_star;      /**< integrated stellar SFRD, with true Hubble */
+  
   int index_bg_rho_idr;       /**< density of interacting dark radiation */
   int index_bg_rho_ur;        /**< relativistic neutrinos/relics density */
   int index_bg_rho_dcdm;      /**< dcdm density */
@@ -262,6 +295,9 @@ struct background
   int index_bi_phi_scf;       /**< {B} scalar field value */
   int index_bi_phi_prime_scf; /**< {B} scalar field derivative wrt conformal time */
 
+  int index_bi_rho_star;  /**< {B} density in stars, from integrated SFRD */
+  int index_bi_consumption_comoving;  /**< {B} baryonic density consumed by BHs (not the same as BH density because of slip, and not the same as density in stars because of Xi */
+  
   int index_bi_time;    /**< {C} proper (cosmological) time in Mpc */
   int index_bi_rs;      /**< {C} sound horizon */
   int index_bi_tau;     /**< {C} conformal time in Mpc */
@@ -296,6 +332,8 @@ struct background
   short has_curvature; /**< presence of global spatial curvature? */
   short has_varconst;  /**< presence of varying fundamental constants? */
 
+  short has_h;         /**< do we specify an h at the outset, or work only with physical densities and get an h? */
+  short has_ccbh;      /**< do we have cosmologically coupled BHs?  if so, then we want to track additional information wrt star formation */
   //@}
 
 
@@ -586,6 +624,7 @@ extern "C" {
 
 #define _Mpc_over_m_ 3.085677581282e22  /**< conversion factor from meters to megaparsecs */
 /* remark: CAMB uses 3.085678e22: good to know if you want to compare  with high accuracy */
+// KC 6/17/24 --> LOL <-- 
 
 #define _Gyr_over_Mpc_ 3.06601394e2 /**< conversion factor from megaparsecs to gigayears
                                        (c=1 units, Julian years of 365.25 days) */
@@ -598,6 +637,21 @@ extern "C" {
 #define _h_P_ 6.62606896e-34
 /* remark: sigma_B = 2 pi^5 k_B^4 / (15h^3c^2) = 5.670400e-8
    = Stefan-Boltzmann constant in W/m^2/K^4 = Kg/K^4/s^3 */
+
+//
+// KC 5/24/24
+// This multiplies little omegas to give an energy density
+// in 1/Mpc^2
+//
+#define _little_omega_to_geo_energy_density_in_Mpc_ 1.32812817e-8
+
+#define _little_omega_to_CLASS_ 1.11265006e-7
+
+#define _little_omega_to_mks_mass_density_ 1.87834162e-26
+#define _little_omega_to_mks_energy_density_ 1.68816926e-9
+
+#define _mks_energy_density_to_geo_Mpc_ 7.86726904
+#define _mks_mass_density_to_geo_Mpc_ 7.0707488e17
 
 //@}
 

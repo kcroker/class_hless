@@ -84,18 +84,25 @@ cdef extern from "class.h":
         double * m_ncdm_in_eV
         double Neff
         double Omega0_g
+        double omega0_g
         double Omega0_b
+        double omega0_b
         double Omega0_idr
         double T_idr
         double Omega0_cdm
+        double omega0_cdm
         double Omega0_idm
         double Omega0_dcdm
         double Omega0_ncdm_tot
         double Omega0_lambda
+        double omega0_lambda
         double Omega0_fld
         double w0_fld
         double wa_fld
         double cs2_fld
+        double k_CCBH
+        double Xi_CCBH
+        double slip_CCBH
         double Omega0_ur
         double Omega0_dcdmdr
         double Omega0_dr
@@ -431,15 +438,7 @@ cdef extern from "class.h":
         FileArg * value
         short * read
 
-    void lensing_free(void*)
-    void harmonic_free(void*)
-    void transfer_free(void*)
-    void primordial_free(void*)
-    void perturbations_free(void*)
-    void thermodynamics_free(void*)
-    void background_free(void*)
-    void fourier_free(void*)
-    void distortions_free(void*)
+    void tracked_free_all()
 
     cdef int _FAILURE_
     cdef int _FALSE_

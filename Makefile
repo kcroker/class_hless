@@ -38,7 +38,7 @@ OPTFLAG = -O3
 #OPTFLAG = -fast
 
 # your openmp flag (comment for compiling without openmp)
-OMPFLAG   = -fopenmp
+OMPFLAG   = -fopenmp #-pthread 
 #OMPFLAG   = -mp -mp=nonuma -mp=allcores -g
 #OMPFLAG   = -openmp
 
@@ -91,9 +91,11 @@ endif
 %.o:  %.c .base $(HEADERFILES)
 	cd $(WRKDIR);$(CC) $(OPTFLAG) $(OMPFLAG) $(CCFLAG) $(INCLUDES) -c ../$< -o $*.o
 
-TOOLS = growTable.o dei_rkck.o sparse.o evolver_rkck.o  evolver_ndf15.o arrays.o parser.o quadrature.o hyperspherical.o common.o trigonometric_integrals.o
+TOOLS = growTable.o dei_rkck.o sparse.o evolver_rkck.o  evolver_ndf15.o arrays.o parser.o quadrature.o hyperspherical.o common.o trigonometric_integrals.o alloc_track.o
 
-SOURCE = input.o background.o thermodynamics.o perturbations.o primordial.o fourier.o transfer.o harmonic.o lensing.o distortions.o
+SOURCE = ccbh.o input.o background.o thermodynamics.o perturbations.o primordial.o fourier.o transfer.o harmonic.o lensing.o distortions.o 
+
+CCBH = ccbh.o
 
 INPUT = input.o
 
@@ -190,13 +192,14 @@ tar: $(C_ALL) $(C_TEST) $(H_ALL) $(PRE_ALL) $(INI_ALL) $(MISC_FILES) $(HYREC) $(
 	tar czvf class.tar.gz $(C_ALL) $(H_ALL) $(PRE_ALL) $(INI_ALL) $(MISC_FILES) $(HYREC) $(PYTHON_FILES)
 
 classy: libclass.a python/classy.pyx python/cclassy.pxd
-ifdef OMPFLAG
-	cp python/setup.py python/autosetup.py
-else
-	grep -v "lgomp" python/setup.py > python/autosetup.py
-endif
-	cd python; export CC=$(CC); $(PYTHON) autosetup.py install || $(PYTHON) autosetup.py install --user
-	rm python/autosetup.py
+	cd python; export CC=$(CC); output=$$($(PYTHON) -m pip install . 2>&1); \
+    echo "$$output"; \
+    if echo "$$output" | grep -q "ERROR: Cannot uninstall"; then \
+        site_packages=$$($(PYTHON) -c "import distutils.sysconfig; print(distutils.sysconfig.get_python_lib())" || $(PYTHON) -c "import site; print(site.getsitepackages()[0])") && \
+		echo "Cleaning up previous installation in: $$site_packages" && \
+        rm -rf $$site_packages/classy* && \
+        $(PYTHON) -m pip install .; \
+    fi
 
 clean: .base
 	rm -rf $(WRKDIR);

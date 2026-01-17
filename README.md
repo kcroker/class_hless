@@ -9,7 +9,7 @@ removing OpenMP, I've not ported the features below to that stuff yet.]
 
 _h_-less CLASS does exactly that: it computes things without needing to specify the expansion rate today a priori.
 
-crash-less CLASS does exactly that: it fixes terrible memory leaks from the Python wrapper so that MCMC can run stably.
+crash-less CLASS does exactly that: it fixes memory leaks from the Python wrapper so that MCMC can run stably.
 
 These two features complement each other because, when you don't need to pin _h_ ahead of time, your model space can open up to some pretty
 wild expansion histories, which will (reasonably) terminate a CLASS run.
@@ -18,7 +18,7 @@ _h_-less Explanation
 ------------------------
 Under the hood, CLASS integrates physical densities in 1/Mpc<sup>2</sup> units.
 Yet, for accounting, closing, and in various other places convenience, it works with big &Omega;'s and _H_<sub>0</sub>.
-Although this is the standard way of "thinking" about Friedmann models, this is actually really bad for searching model space because it binds a present-day scale (_H_<sub>0</sub>) to the code that establishes initial conditions.
+Although this is the standard way of approaching Friedmann models, it is sub-optimal for searching non-&Lambda;CDM model spaces because it binds a present-day scale (_H_<sub>0</sub>) to the code that establishes initial conditions.
 For example, by writing &Omega;<sub>b</sub> _H_<sub>0</sub><sup>2</sup>/_a_<sub>i</sub>^<sup>3</sup> to get the baryon density at _a_<sub>i</sub>, we've just projected backwards assuming nothing squirrely is happening across the intervening 13.8Gyr.
 
 In this version of CLASS, all modules (except for non-linear stuff in `fourier`) have been modified to work without specification of an _H_<sub>0</sub> or an _h_.
@@ -47,7 +47,7 @@ TLDR - if `without_h` is enabled, then the &omega;'s describe the universe that 
 
 Crash-less Explanation
 ------------------------
-When CLASS (the C stuff) errors out because of a bad cosmology, it didn't free its allocated memory.
+When CLASS (the C stuff) errors out because of a wild cosmology, it didn't free its allocated memory.
 This was no problem if just called from the command line because the OS cleans up for you.
 But if called from the Python wrapper, this became a severe memory leak.
 If driven from MontePython or Cobaya for MCMC, available memory could be exhausted in seconds if the MCMC got into some squirelly place in cosmological parameter space.
